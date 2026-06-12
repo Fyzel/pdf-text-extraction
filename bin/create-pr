@@ -1,0 +1,76 @@
+#!/usr/bin/env sh
+# bin/create-pr
+
+OLLAMA_REMOTE="http://michaels-mac-mini.local:11434"
+OLLAMA_LOCAL="http://localhost:11434"
+OLLAMA_MODEL="gemma4:latest"
+
+# Detect base branch
+BASE_BRANCH="main"
+git show-ref --verify --quiet refs/heads/main || BASE_BRANCH="master"
+
+# Verify required tools
+if ! command -v gh > /dev/null 2>&1; then
+  echo "Error: gh CLI not installed." >&2
+  exit 1
+fi
+
+if ! command -v curl > /dev/null 2>&1; then
+  echo "Error: curl not installed." >&2
+  exit 1
+fi
+
+if ! command -v jq > /dev/null 2>&1; then
+  echo "Error: jq not installed." >&2
+  exit 1
+fi
+
+# Ensure commits exist ahead of base
+COMMITS=$(git log "$BASE_BRANCH..HEAD" --oneline)
+if [ -z "$COMMITS" ]; then
+  echo "No commits ahead of $BASE_BRANCH. Nothing to PR." >&2
+  exit 1
+fi
+
+LOG=$(git log "$BASE_BRANCH..HEAD" --pretty=format:"- %s")
+DIFF=$(git diff "$BASE_BRANCH"...HEAD)
+
+OUTPUT_FILE=$(mktemp)
+trap 'rm -f "$OUTPUT_FILE"' EXIT
+
+PROMPT=$(printf 'Generate a pull request title and description based on the commits and diff below.\nOutput EXACTLY this format with no other text:\n\nTITLE: <title under 72 characters, imperative mood>\n\nBODY:\n<concise description with bullet points for key changes>\n\nCommits:\n%s\n\nDiff:\n%s' "$LOG" "$DIFF")
+
+call_ollama() {
+  BASE="$1"
+  curl -s --connect-timeout 5 --max-time 120 "$BASE/api/generate" \
+    -H 'Content-Type: application/json' \
+    -d "$(jq -n --arg model "$OLLAMA_MODEL" --arg prompt "$PROMPT" \
+         '{"model":$model,"prompt":$prompt,"stream":false}')" \
+    | jq -r '.response // empty' \
+    | tr -d '\r'
+}
+
+echo "Generating PR title and description with $OLLAMA_MODEL (remote)..."
+OUTPUT=$(call_ollama "$OLLAMA_REMOTE")
+
+if [ -z "$OUTPUT" ]; then
+  echo "Remote unavailable, falling back to local ollama..."
+  OUTPUT=$(call_ollama "$OLLAMA_LOCAL")
+fi
+
+if [ -z "$OUTPUT" ]; then
+  echo "Error: both remote and local ollama failed." >&2
+  exit 1
+fi
+
+TITLE=$(printf '%s' "$OUTPUT" | awk '/^TITLE:/{sub(/^TITLE:[[:space:]]*/, ""); print; exit}')
+BODY=$(printf '%s' "$OUTPUT" | awk '/^BODY:/{found=1; next} found{print}' | sed '/./,$!d')
+
+if [ -z "$TITLE" ]; then
+  echo "Error: failed to parse PR title from model output." >&2
+  echo "Raw output:" >&2
+  printf '%s\n' "$OUTPUT" >&2
+  exit 1
+fi
+
+gh pr create --title "$TITLE" --body "$BODY"
