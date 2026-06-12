@@ -20,11 +20,13 @@ Python 3.14 venv at `.venv/`. Activate before running anything:
 python main.py
 ```
 
-## PR Automation
+## Ollama Automation
 
-`bin/create-pr` generates PR title and body via Ollama (`gemma4:latest`), then opens the PR with `gh`. Requires `gh`, `curl`, and `jq`.
+Both commit messages and PRs are auto-generated via Ollama (`gemma4:latest`). Same fallback logic in both: tries `http://michaels-mac-mini.local:11434` first, falls back to `http://localhost:11434`. Requires `curl` and `jq`.
 
-- Tries remote Ollama at `http://michaels-mac-mini.local:11434` first, falls back to `http://localhost:11434`.
+**Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge/squash/empty diff.
+
+**PR creation** — `bin/create-pr` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`.
 
 ```sh
 bin/create-pr
