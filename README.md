@@ -5,6 +5,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![CI (main)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/tests.yml?branch=main&label=CI%20%28main%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
 [![CI (dev)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/tests.yml?branch=dev&label=CI%20%28dev%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
+[![Dependabot](https://img.shields.io/badge/Dependabot-enabled-2cbe4e?logo=dependabot)](https://github.com/Fyzel/pdf-text-extraction/network/updates)
 
 ## Features
 
@@ -115,6 +116,14 @@ Re-running the same command resumes from where processing left off.
 | 7 | Output file write error |
 
 See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Error-Codes) for remediation steps.
+
+## Testing
+
+```sh
+pytest tests/
+```
+
+107 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked. See the [Testing wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Testing) for details.
 
 ## Documentation
 
