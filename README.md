@@ -44,6 +44,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Install pre-commit hooks:
+
+```sh
+pre-commit install
+```
+
 ## Configuration
 
 Copy the sample config and edit it to point at your Ollama instance:

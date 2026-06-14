@@ -158,11 +158,22 @@ Uses a thread pool with one worker thread per available Ollama instance.
 
 # Technology Stack
 
+## Application Dependencies
+
 - Python 3.14
 - PyMuPDF (`fitz`) — PDF page rendering and JPEG export
 - Ollama hosted locally or remotely, running `qwen2.5-vl` (7b or 32b per instance)
+
+## Dev / Tooling Dependencies
+
 - pytest — test framework
 - pytest-mock — Ollama HTTP call mocking
+- pylint — linting
+- bandit — security static analysis
+- pre-commit — git hook management
+- PyYAML — YAML parsing
+- trivy — secret detection (installed separately, called via pre-commit)
+- actionlint — GitHub Actions workflow linting (installed separately, called via pre-commit)
 
 ## Error States
 
