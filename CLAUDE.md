@@ -22,9 +22,11 @@ python main.py
 
 ## Ollama Automation
 
-Both commit messages and PRs are auto-generated via Ollama (`gemma4:latest`). Same fallback logic in both: tries `http://michaels-mac-mini.local:11434` first, falls back to `http://localhost:11434`. Requires `curl` and `jq`.
+Both commit messages and PRs are auto-generated via Ollama (`gemma4:latest`). Instance URLs are read from `ollama-dev.json` (see `ollama-dev.sample.json`); falls back to `http://localhost:11434`. Requires `curl` and `jq`.
 
-**Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge/squash/empty diff.
+Note: `ollama-dev.json` is the dev tooling config (gemma4). `ollama.json` is the application config (qwen2.5-vl). They are separate and both gitignored.
+
+**Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge, squash, `git commit -m`, and empty diff.
 
 **PR creation** — `bin/create-pr` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`.
 

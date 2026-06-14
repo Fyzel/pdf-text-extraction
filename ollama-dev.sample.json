@@ -1,0 +1,6 @@
+{
+  "instances": [
+    { "url": "http://remote-host:11434", "model": "gemma4:latest" },
+    { "url": "http://localhost:11434", "model": "gemma4:latest" }
+  ]
+}
