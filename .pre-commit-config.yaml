@@ -6,14 +6,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: package-skills
-        name: Package skills
-        language: system
-        entry: python
-        args: [skills/skill-validator/scripts/validate-skills.py, --no-package]
-        files: ^skills/
-        pass_filenames: false
-
       - id: trivy-secrets
         name: Trivy secrets detection
         language: system

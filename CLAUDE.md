@@ -4,7 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project State
 
-Early-stage Python project for PDF text extraction. `main.py` is currently a placeholder. No dependencies or tests have been added yet.
+Early-stage Python project for PDF text extraction. `main.py` is currently a placeholder. Application dependencies (PyMuPDF, Ollama HTTP client) not yet added — `requirements.txt` currently contains dev tooling only (bandit, pylint, pre-commit, PyYAML).
+
+## Pre-commit Hooks
+
+Install hooks after cloning:
+
+```sh
+pre-commit install
+```
+
+Active hooks:
+
+| Hook | Purpose |
+|------|---------|
+| `actionlint` | GitHub Actions workflow linting |
+| `trivy-secrets` | Secret detection across all files |
+| `pylint` | Python linting |
+| `bandit` | Python security static analysis |
 
 ## Environment
 
