@@ -1,0 +1,77 @@
+{
+  "pdf_path": "U:\\home\\schwabm\\Documents\\GitHub\\pdf-text-extraction\\tests\\fixtures\\multipage.pdf",
+  "page_count": 10,
+  "combined_done": true,
+  "pages": {
+    "1": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "2": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "3": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "4": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "5": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "6": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "7": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "8": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "9": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "10": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    }
+  }
+}

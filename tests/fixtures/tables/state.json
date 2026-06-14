@@ -1,0 +1,28 @@
+{
+  "pdf_path": "U:\\home\\schwabm\\Documents\\GitHub\\pdf-text-extraction\\tests\\fixtures\\tables.pdf",
+  "page_count": 3,
+  "combined_done": true,
+  "pages": {
+    "1": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "2": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "3": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    }
+  }
+}

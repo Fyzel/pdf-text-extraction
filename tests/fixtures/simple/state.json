@@ -1,0 +1,14 @@
+{
+  "pdf_path": "U:\\home\\schwabm\\Documents\\GitHub\\pdf-text-extraction\\tests\\fixtures\\simple.pdf",
+  "page_count": 1,
+  "combined_done": true,
+  "pages": {
+    "1": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    }
+  }
+}

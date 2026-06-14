@@ -1,6 +1,6 @@
 {
   "max_render_workers": 4,
   "instances": [
-    { "url": "http://localhost:11434", "model": "qwen2.5-vl:7b" }
+    { "url": "http://localhost:11434", "model": "qwen3-vl:8b" }
   ]
 }

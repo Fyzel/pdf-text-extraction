@@ -1,0 +1,37 @@
+repos:
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: trivy-secrets
+        name: Trivy secrets detection
+        language: system
+        entry: trivy fs
+        args:
+          - --scanners=secret
+          - --offline-scan
+          - --skip-db-update
+          - --skip-java-db-update
+          - --skip-dirs=.venv
+          - --skip-dirs=.git
+          - --timeout=120s
+          - --no-progress
+          - .
+        pass_filenames: false
+        always_run: true
+
+      - id: pylint
+        name: pylint
+        language: system
+        entry: pylint
+        types: [python]
+
+      - id: bandit
+        name: bandit security check
+        language: system
+        entry: bandit
+        args: [-r, -ll]
+        types: [python]

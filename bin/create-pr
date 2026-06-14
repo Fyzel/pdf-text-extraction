@@ -2,8 +2,8 @@
 # bin/create-pr
 
 # Detect base branch
-BASE_BRANCH="main"
-git show-ref --verify --quiet refs/heads/main || BASE_BRANCH="master"
+BASE_BRANCH="dev"
+git show-ref --verify --quiet refs/heads/dev || BASE_BRANCH="main"
 
 # Verify required tools
 if ! command -v gh > /dev/null 2>&1; then
@@ -60,7 +60,7 @@ if [ -f "$CONFIG_FILE" ]; then
   i=0
   while [ "$i" -lt "$INSTANCE_COUNT" ]; do
     URL=$(jq -r ".instances[$i].url" "$CONFIG_FILE")
-    MODEL=$(jq -r ".instances[$i].model // \"qwen2.5-vl:7b\"" "$CONFIG_FILE")
+    MODEL=$(jq -r ".instances[$i].model // \"gemma4:latest\"" "$CONFIG_FILE")
     echo "Generating PR title and description with $MODEL ($URL)..."
     OUTPUT=$(call_ollama "$URL" "$MODEL")
     [ -n "$OUTPUT" ] && break
@@ -68,8 +68,8 @@ if [ -f "$CONFIG_FILE" ]; then
     i=$((i + 1))
   done
 else
-  echo "Generating PR title and description with qwen2.5-vl:7b (localhost)..."
-  OUTPUT=$(call_ollama "http://localhost:11434" "qwen2.5-vl:7b")
+  echo "Generating PR title and description with gemma4:latest (localhost)..."
+  OUTPUT=$(call_ollama "http://localhost:11434" "gemma4:latest")
 fi
 
 if [ -z "$OUTPUT" ]; then

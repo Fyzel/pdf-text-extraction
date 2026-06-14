@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint (pylint)
+        run: |
+          FILES=$(find . -name "*.py" ! -path "./.venv/*")
+          [ -n "$FILES" ] && pylint $FILES --exit-zero
+
+      - name: Security scan (bandit)
+        run: bandit -r . -ll --exclude .venv
+
+      - name: Run tests
+        run: |
+          if [ -d tests ]; then
+            pytest tests/ -v --tb=short || [ "$?" -eq 5 ]
+          else
+            echo "No tests directory found"
+          fi
