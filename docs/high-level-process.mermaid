@@ -1,0 +1,109 @@
+---
+title: High-Level Process
+---
+flowchart TD
+
+    %% ─── PHASE 0: STARTUP ──────────────────────────────────────────────────
+    START([User runs: python main.py PDF_PATH]) --> chkArg{PDF path\nargument provided?}
+    chkArg -- No --> errNoArg[Log: no argument supplied]
+    errNoArg --> EXIT1([Exit 1: Missing argument])
+
+    chkArg -- Yes --> chkExists{PDF file\nexists?}
+    chkExists -- No --> errNoFile[Log: file not found]
+    errNoFile --> EXIT2([Exit 2: File not found])
+
+    chkExists -- Yes --> chkReadable{PDF file\nreadable?}
+    chkReadable -- No --> errNotReadable[Log: file not readable]
+    errNotReadable --> EXIT3([Exit 3: File not readable])
+
+    chkReadable -- Yes --> loadConfig[Load ollama.json config\nBuild list of instance URLs\nFallback: localhost:11434 with qwen2.5-vl:7b]
+
+    loadConfig --> probeOllama{At least one\nOllama instance\nreachable?}
+    probeOllama -- No --> errNoOllama[Log: no Ollama instances reachable]
+    errNoOllama --> EXIT4([Exit 4: No Ollama instances])
+
+    probeOllama -- Yes --> detectCores[Detect available CPU cores\nos.cpu_count\nApply max_render_workers cap if set\nLog worker count]
+
+    detectCores --> createOutDir[Create output dir\npdf-name/ sibling to PDF\nif not already present]
+
+    createOutDir --> readPages[Read PDF page count]
+
+    readPages --> initState{state.json\nexists?}
+    initState -- No --> writeState[Initialize state.json\nwith page count and\nall pages unmarked]
+    initState -- Yes --> loadState[Load existing state.json]
+    writeState --> chkComplete
+    loadState --> chkComplete
+
+    chkComplete{Overall state\nin state.json?}
+    chkComplete -- complete --> logDone[Log: already complete\nOutput path printed]
+    logDone --> EXIT0([Exit 0: Success])
+    chkComplete -- partial --> logResume[Log: resuming from\npartial run]
+    logResume --> imgLoop
+    chkComplete -- not started --> imgLoop
+
+    %% ─── PHASE 1: IMAGE PROCESSING ─────────────────────────────────────────
+    imgLoop[Distribute unprocessed pages\nacross ProcessPoolExecutor\nmax_workers = cpu_count or cap]
+
+    imgLoop --> renderPage[Worker: Render page N as JPEG\nvia PyMuPDF\nSave: pages/page_NNN.jpg\nReturn success or failure to main process]
+
+    renderPage --> imgOk{All workers\ncomplete?}
+    imgOk -- Yes --> collectResults[Main process collects results\nUpdates state.json:\nimage_done or image_failed per page]
+    collectResults --> chkAllImgFailed
+
+    chkAllImgFailed{Did ALL pages\nfail image\nrendering?}
+    chkAllImgFailed -- Yes --> errAllImg[Log: all pages failed image rendering]
+    errAllImg --> EXIT5([Exit 5: All pages failed image rendering])
+    chkAllImgFailed -- No --> ocrLoop
+
+    %% ─── PHASE 2: OCR PROCESSING ────────────────────────────────────────────
+    ocrLoop[For each page where image_done = true\nand ocr_done = false\nprocess concurrently]
+
+    ocrLoop --> assignInstance[Assign to next available\nOllama instance\nround-robin across reachable URLs]
+
+    assignInstance --> callOllama[Send pages/page_NNN.jpg\nto instance model\nqwen2.5-vl:7b or :32b\nRequest: full OCR text\n+ diagram bounding boxes]
+
+    callOllama --> ocrOk{Ollama response\nreceived OK?}
+
+    ocrOk -- No --> retryOther{Other Ollama\ninstances\navailable?}
+    retryOther -- Yes --> assignInstance
+    retryOther -- No --> markOcrFail[Log OCR error for page N\nUpdate state.json\nocr_failed = true for page N]
+    markOcrFail --> ocrLoopNext
+
+    ocrOk -- Yes --> chkDiagrams{Response includes\ndiagram bounding\nboxes?}
+
+    chkDiagrams -- Yes --> cropDiagrams[For each bounding box M on page N\nCrop region from page_NNN.jpg\nSave: diagrams/page_NNN_diagram_M.jpg]
+    cropDiagrams --> buildPageMd[Build pages/page_NNN.md\nOCR text + markdown image\nreferences for each diagram]
+
+    chkDiagrams -- No --> buildPageMdNoDiagram[Build pages/page_NNN.md\nOCR text only]
+
+    buildPageMd --> savePageMd[Save pages/page_NNN.md]
+    buildPageMdNoDiagram --> savePageMd
+
+    savePageMd --> markOcrDone[Update state.json\nocr_done = true for page N]
+
+    markOcrDone --> ocrLoopNext{More pages\nto OCR?}
+    ocrLoopNext -- Yes --> ocrLoop
+    ocrLoopNext -- No --> chkAllOcrFailed
+
+    chkAllOcrFailed{Did ALL pages\nfail OCR?}
+    chkAllOcrFailed -- Yes --> errAllOcr[Log: all pages failed OCR]
+    errAllOcr --> EXIT6([Exit 6: All pages failed OCR])
+    chkAllOcrFailed -- No --> combinePhase
+
+    %% ─── PHASE 3: COMBINE ───────────────────────────────────────────────────
+    combinePhase[Collect all pages/page_NNN.md\nin ascending page order\nSkip pages with ocr_failed = true]
+
+    combinePhase --> mergePages[For each collected page N in order\nPrepend --- PAGE N ---\nAppend page markdown content]
+
+    mergePages --> writeOutput[Write combined markdown\nto pdf-name.md\nsibling to original PDF]
+
+    writeOutput --> writeOk{File written\nsuccessfully?}
+    writeOk -- No --> errWrite[Log: file write error]
+    errWrite --> EXIT7([Exit 7: Output file write error])
+
+    writeOk -- Yes --> markCombined[Update state.json\ncombined_done = true]
+
+    %% ─── SUMMARY ────────────────────────────────────────────────────────────
+    markCombined --> printSummary[Print summary:\n- Total pages in PDF\n- Pages with successful image render\n- Pages with failed image render\n- Pages with successful OCR\n- Pages with failed OCR\n- Output file path]
+
+    printSummary --> EXIT0
