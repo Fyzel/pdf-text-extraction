@@ -2,8 +2,8 @@
 # bin/create-pr
 
 # Detect base branch
-BASE_BRANCH="main"
-git show-ref --verify --quiet refs/heads/main || BASE_BRANCH="master"
+BASE_BRANCH="dev"
+git show-ref --verify --quiet refs/heads/dev || BASE_BRANCH="main"
 
 # Verify required tools
 if ! command -v gh > /dev/null 2>&1; then
