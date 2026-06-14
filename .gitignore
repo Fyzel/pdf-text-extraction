@@ -256,3 +256,6 @@ cython_debug/
 ollama.json
 ollama-dev.json
 
+# Generated test fixtures — created at test bootstrap by conftest.py, not committed
+tests/fixtures/*.pdf
+

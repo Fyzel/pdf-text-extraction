@@ -26,7 +26,7 @@ Both commit messages and PRs are auto-generated via Ollama (`gemma4:latest`). In
 
 Note: `ollama-dev.json` is the dev tooling config (gemma4). `ollama.json` is the application config (qwen2.5-vl). They are separate and both gitignored.
 
-**Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge/squash/empty diff.
+**Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge, squash, `git commit -m`, and empty diff.
 
 **PR creation** — `bin/create-pr` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`.
 

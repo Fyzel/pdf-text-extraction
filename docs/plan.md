@@ -42,7 +42,7 @@ Each instance is an object with a `url` and optional per-instance `model` overri
 
 ```json
 {
-  "max_render_workers": 8,
+  "max_render_workers": 4,
   "instances": [
     { "url": "http://host-a:11434", "model": "qwen2.5-vl:32b" },
     { "url": "http://host-b:11434", "model": "qwen2.5-vl:7b" }
@@ -222,7 +222,7 @@ All Ollama HTTP calls are mocked in unit and integration tests. End-to-end tests
 
 ## Sample PDF Fixtures
 
-Committed to `tests/fixtures/`. Generated programmatically at test-suite bootstrap using PyMuPDF so no binary blobs are stored in git.
+PDF fixtures are **not committed to git** — they are generated programmatically by `conftest.py` at test bootstrap using PyMuPDF and written to `tests/fixtures/` before the test session runs. The `tests/fixtures/` directory is tracked but the generated `.pdf` files are gitignored.
 
 | File | Pages | Purpose |
 |------|-------|---------|
@@ -232,8 +232,6 @@ Committed to `tests/fixtures/`. Generated programmatically at test-suite bootstr
 | `mixed.pdf` | 5 | Mix of text-only and diagram pages |
 | `tables.pdf` | 3 | Page 1: simple table; page 2: multi-column table; page 3: complex table with irregular structure |
 | `corrupt.pdf` | N/A | Malformed file, triggers exit 5 (all pages fail image rendering) |
-
-A `conftest.py` at the `tests/` root generates these fixtures into a temp directory before the test session and cleans up after.
 
 ## Unit Tests
 
