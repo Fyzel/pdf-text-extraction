@@ -1,0 +1,253 @@
+"""End-to-end pipeline tests with mocked Ollama."""
+import json
+import shutil
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from pdf_extractor.cli import run
+
+FIXTURES = Path(__file__).parent.parent / "fixtures"
+
+_NEXT_PORT = 19600
+
+
+def _alloc_port() -> int:
+    global _NEXT_PORT
+    p = _NEXT_PORT
+    _NEXT_PORT += 1
+    return p
+
+
+def _start_mock(port: int, ocr_fn=None) -> HTTPServer:
+    default_body = json.dumps({"text": "page text", "diagrams": []})
+
+    def _default(_path):
+        return default_body
+
+    fn = ocr_fn or _default
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            resp = json.dumps({"models": []}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", len(resp))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            self.rfile.read(length)
+            payload = json.dumps({"response": fn(self.path)}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", len(payload))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _copy_fixture(tmp_path: Path, name: str) -> Path:
+    """Copy a fixture PDF into tmp_path so output lands there, not in fixtures/."""
+    src = FIXTURES / name
+    dst = tmp_path / name
+    shutil.copy2(src, dst)
+    return dst
+
+
+def _run(tmp_path: Path, pdf: Path, port: int, ocr_fn=None):
+    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen3-vl:8b"}]}
+    (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
+    with patch.object(sys, "argv", ["main.py", str(pdf)]):
+        return run()
+
+
+# ---------------------------------------------------------------------------
+# simple.pdf
+# ---------------------------------------------------------------------------
+
+def test_e2e_simple(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_fixture(tmp_path, "simple.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        out_md = tmp_path / "simple.md"
+        assert out_md.is_file()
+        content = out_md.read_text(encoding="utf-8")
+        assert "--- PAGE 1 ---" in content
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# multipage.pdf — 10 sections in order
+# ---------------------------------------------------------------------------
+
+def test_e2e_multipage(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_fixture(tmp_path, "multipage.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "multipage.md").read_text(encoding="utf-8")
+        assert content.count("--- PAGE") == 10
+        positions = [content.index(f"--- PAGE {i} ---") for i in range(1, 11)]
+        assert positions == sorted(positions)
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# diagrams.pdf — image refs + diagram files
+# ---------------------------------------------------------------------------
+
+def test_e2e_diagrams(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    bbox = {"x": 10, "y": 10, "width": 100, "height": 80}
+
+    def ocr_fn(_path):
+        return json.dumps({"text": "diagram page", "diagrams": [bbox]})
+
+    server = _start_mock(port, ocr_fn)
+    try:
+        pdf = _copy_fixture(tmp_path, "diagrams.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "diagrams.md").read_text(encoding="utf-8")
+        assert "![Diagram 1]" in content
+        diag_dir = tmp_path / "diagrams" / "diagrams"
+        assert diag_dir.is_dir()
+        assert len(list(diag_dir.glob("*.jpg"))) > 0
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# mixed.pdf — diagram pages have refs, text-only pages do not
+# ---------------------------------------------------------------------------
+
+def test_e2e_mixed(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    call_num = [0]
+
+    def ocr_fn(_path):
+        call_num[0] += 1
+        if call_num[0] % 2 == 0:
+            return json.dumps({"text": "diagram page", "diagrams": [{"x": 10, "y": 10, "width": 50, "height": 50}]})
+        return json.dumps({"text": "text only page", "diagrams": []})
+
+    server = _start_mock(port, ocr_fn)
+    try:
+        pdf = _copy_fixture(tmp_path, "mixed.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "mixed.md").read_text(encoding="utf-8")
+        assert content.count("--- PAGE") == 5
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# tables.pdf — markdown tables in output, no diagram directory
+# ---------------------------------------------------------------------------
+
+def test_e2e_tables(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+
+    def ocr_fn(_path):
+        return json.dumps({"text": "| Col1 | Col2 |\n|------|------|\n| A    | B    |", "diagrams": []})
+
+    server = _start_mock(port, ocr_fn)
+    try:
+        pdf = _copy_fixture(tmp_path, "tables.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "tables.md").read_text(encoding="utf-8")
+        assert "| Col1 | Col2 |" in content
+        diag_dir = tmp_path / "tables" / "diagrams"
+        assert not diag_dir.exists()
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Re-run on completed PDF → exit 0 immediately
+# ---------------------------------------------------------------------------
+
+def test_e2e_rerun_exits_0(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_fixture(tmp_path, "simple.pdf")
+        code1 = _run(tmp_path, pdf, port)
+        assert code1 == 0
+        code2 = _run(tmp_path, pdf, port)
+        assert code2 == 0
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# corrupt.pdf → exit 5 (or 3)
+# ---------------------------------------------------------------------------
+
+def test_e2e_corrupt_pdf(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_fixture(tmp_path, "corrupt.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code in (3, 5)
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Missing argument → exit 1
+# ---------------------------------------------------------------------------
+
+def test_e2e_missing_argument():
+    with patch.object(sys, "argv", ["main.py"]):
+        assert run() == 1
+
+
+# ---------------------------------------------------------------------------
+# Non-existent path → exit 2
+# ---------------------------------------------------------------------------
+
+def test_e2e_nonexistent_path(tmp_path):
+    with patch.object(sys, "argv", ["main.py", str(tmp_path / "no.pdf")]):
+        assert run() == 2
+
+
+# ---------------------------------------------------------------------------
+# No Ollama reachable → exit 4
+# ---------------------------------------------------------------------------
+
+def test_e2e_no_ollama(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    cfg = {"instances": [{"url": "http://127.0.0.1:19598", "model": "qwen3-vl:8b"}]}
+    (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
+    with patch.object(sys, "argv", ["main.py", str(FIXTURES / "simple.pdf")]):
+        assert run() == 4

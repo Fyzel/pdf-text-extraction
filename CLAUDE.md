@@ -4,7 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project State
 
-Early-stage Python project for PDF text extraction. `main.py` is currently a placeholder. Application dependencies (PyMuPDF, Ollama HTTP client) not yet added — `requirements.txt` currently contains dev tooling only (bandit, pylint, pre-commit, PyYAML).
+Full pipeline implemented and tested. `main.py` is the entry point. Core modules in `pdf_extractor/`:
+
+| Module | Purpose |
+|--------|---------|
+| `config.py` | Load `ollama.json`, fallback defaults, validate schema |
+| `health.py` | Probe Ollama instances via `GET /api/tags` |
+| `state.py` | Thread-safe `state.json` read/write with atomic rename |
+| `render.py` | Phase 1 — PDF→JPEG via PyMuPDF, `ProcessPoolExecutor` |
+| `ocr.py` | Phase 2 — Ollama OCR, diagram crop, round-robin + retry |
+| `combine.py` | Phase 3 — merge per-page `.md` into single output file |
+| `cli.py` | Entry point, phases 1–3, exit codes 0–7 |
+
+Test suite: `tests/` — 107 tests across unit, integration, and e2e layers. Run with `pytest tests/`.
+
+Application dependencies in `requirements.txt`: PyMuPDF, pytest, pytest-mock, pylint, bandit, pre-commit, PyYAML.
 
 ## Pre-commit Hooks
 

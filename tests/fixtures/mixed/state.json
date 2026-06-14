@@ -1,0 +1,42 @@
+{
+  "pdf_path": "U:\\home\\schwabm\\Documents\\GitHub\\pdf-text-extraction\\tests\\fixtures\\mixed.pdf",
+  "page_count": 5,
+  "combined_done": true,
+  "pages": {
+    "1": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "2": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 1
+    },
+    "3": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    },
+    "4": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 1
+    },
+    "5": {
+      "image_done": true,
+      "image_failed": false,
+      "ocr_done": true,
+      "ocr_failed": false,
+      "diagram_count": 0
+    }
+  }
+}
