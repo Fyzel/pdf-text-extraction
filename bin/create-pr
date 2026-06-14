@@ -60,7 +60,7 @@ if [ -f "$CONFIG_FILE" ]; then
   i=0
   while [ "$i" -lt "$INSTANCE_COUNT" ]; do
     URL=$(jq -r ".instances[$i].url" "$CONFIG_FILE")
-    MODEL=$(jq -r ".instances[$i].model // \"qwen2.5-vl:7b\"" "$CONFIG_FILE")
+    MODEL=$(jq -r ".instances[$i].model // \"gemma4:latest\"" "$CONFIG_FILE")
     echo "Generating PR title and description with $MODEL ($URL)..."
     OUTPUT=$(call_ollama "$URL" "$MODEL")
     [ -n "$OUTPUT" ] && break
@@ -68,8 +68,8 @@ if [ -f "$CONFIG_FILE" ]; then
     i=$((i + 1))
   done
 else
-  echo "Generating PR title and description with qwen2.5-vl:7b (localhost)..."
-  OUTPUT=$(call_ollama "http://localhost:11434" "qwen2.5-vl:7b")
+  echo "Generating PR title and description with gemma4:latest (localhost)..."
+  OUTPUT=$(call_ollama "http://localhost:11434" "gemma4:latest")
 fi
 
 if [ -z "$OUTPUT" ]; then
