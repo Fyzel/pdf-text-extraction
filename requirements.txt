@@ -1,4 +1,4 @@
-astroid==4.1.2
+astroid==4.0.4
 bandit==1.9.4
 cfgv==3.5.0
 colorama==0.4.6
