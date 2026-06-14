@@ -5,8 +5,10 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+from pdf_extractor.combine import run_phase3
 from pdf_extractor.config import AppConfig, OllamaInstance, load_config
 from pdf_extractor.health import probe_instances
+from pdf_extractor.ocr import run_phase2
 from pdf_extractor.render import get_page_count, render_pages
 from pdf_extractor.state import AppState, StateManager
 
@@ -26,6 +28,8 @@ def run() -> int:
         - ``3``: PDF file exists but is not readable or cannot be opened.
         - ``4``: ollama.json is invalid, or no Ollama instances are reachable.
         - ``5``: All pages failed image rendering.
+        - ``6``: All rendered pages failed OCR.
+        - ``7``: Combined output file write failed.
     """
     if len(sys.argv) < 2:
         print("Usage: python main.py <pdf_path>", file=sys.stderr)
@@ -115,5 +119,55 @@ def run() -> int:
     )
     print(f"Phase 1 complete: {rendered_count}/{page_count} page(s) rendered")
 
-    # Segment 4 continues here: Phase 2 OCR
+    # --- Phase 2: OCR ---
+    ocr_pending: list[int] = [
+        i for i in range(1, page_count + 1)
+        if state.pages[str(i)].image_done
+        and not state.pages[str(i)].ocr_done
+        and not state.pages[str(i)].ocr_failed
+    ]
+
+    if ocr_pending:
+        print(
+            f"Phase 2: OCR {len(ocr_pending)} page(s) "
+            f"with {len(config.instances)} instance(s)..."
+        )
+        run_phase2(output_dir, page_count, ocr_pending, config.instances, state, state_mgr)
+
+    rendered_pages: list[int] = [
+        i for i in range(1, page_count + 1) if state.pages[str(i)].image_done
+    ]
+    if rendered_pages and all(state.pages[str(i)].ocr_failed for i in rendered_pages):
+        print("Error: all pages failed OCR processing", file=sys.stderr)
+        return 6
+
+    ocr_count: int = sum(
+        1 for i in range(1, page_count + 1) if state.pages[str(i)].ocr_done
+    )
+    print(f"Phase 2 complete: {ocr_count}/{page_count} page(s) OCR'd")
+
+    # --- Phase 3: combine ---
+    print("Phase 3: combining per-page markdown...")
+    ok: bool
+    err: str
+    ok, err = run_phase3(pdf_path, output_dir, page_count, state, state_mgr)
+    if not ok:
+        print(f"Error: output file write failed — {err}", file=sys.stderr)
+        return 7
+
+    output_md: Path = pdf_path.parent / f"{pdf_path.stem}.md"
+
+    # --- Summary ---
+    render_ok: int = sum(1 for i in range(1, page_count + 1) if state.pages[str(i)].image_done)
+    render_fail: int = sum(1 for i in range(1, page_count + 1) if state.pages[str(i)].image_failed)
+    ocr_ok: int = sum(1 for i in range(1, page_count + 1) if state.pages[str(i)].ocr_done)
+    ocr_fail: int = sum(1 for i in range(1, page_count + 1) if state.pages[str(i)].ocr_failed)
+
+    print(f"Done: {output_md}")
+    print(f"  Pages total:        {page_count}")
+    print(f"  Image rendered:     {render_ok}")
+    print(f"  Image failed:       {render_fail}")
+    print(f"  OCR succeeded:      {ocr_ok}")
+    print(f"  OCR failed:         {ocr_fail}")
+
     return 0
