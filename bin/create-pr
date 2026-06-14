@@ -1,10 +1,6 @@
 #!/usr/bin/env sh
 # bin/create-pr
 
-OLLAMA_REMOTE="http://michaels-mac-mini.local:11434"
-OLLAMA_LOCAL="http://localhost:11434"
-OLLAMA_MODEL="gemma4:latest"
-
 # Detect base branch
 BASE_BRANCH="main"
 git show-ref --verify --quiet refs/heads/main || BASE_BRANCH="master"
@@ -35,31 +31,49 @@ fi
 LOG=$(git log "$BASE_BRANCH..HEAD" --pretty=format:"- %s")
 DIFF=$(git diff "$BASE_BRANCH"...HEAD)
 
-OUTPUT_FILE=$(mktemp)
-trap 'rm -f "$OUTPUT_FILE"' EXIT
+# Load dev tooling config (separate from app ollama.json)
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+CONFIG_FILE="$PROJECT_ROOT/ollama-dev.json"
+
+PAYLOAD_FILE=$(mktemp)
+trap 'rm -f "$PAYLOAD_FILE"' EXIT
 
 PROMPT=$(printf 'Generate a pull request title and description based on the commits and diff below.\nOutput EXACTLY this format with no other text:\n\nTITLE: <title under 72 characters, imperative mood>\n\nBODY:\n<concise description with bullet points for key changes>\n\nCommits:\n%s\n\nDiff:\n%s' "$LOG" "$DIFF")
 
 call_ollama() {
-  BASE="$1"
-  curl -s --connect-timeout 5 --max-time 120 "$BASE/api/generate" \
+  URL="$1"
+  MODEL="$2"
+  # Pipe prompt via stdin to avoid argument length limits on large diffs
+  printf '%s' "$PROMPT" | jq -Rs --arg model "$MODEL" \
+    '{"model":$model,"prompt":.,"stream":false}' > "$PAYLOAD_FILE"
+  curl -s --connect-timeout 5 --max-time 120 "$URL/api/generate" \
     -H 'Content-Type: application/json' \
-    -d "$(jq -n --arg model "$OLLAMA_MODEL" --arg prompt "$PROMPT" \
-         '{"model":$model,"prompt":$prompt,"stream":false}')" \
+    --data @"$PAYLOAD_FILE" \
     | jq -r '.response // empty' \
     | tr -d '\r'
 }
 
-echo "Generating PR title and description with $OLLAMA_MODEL (remote)..."
-OUTPUT=$(call_ollama "$OLLAMA_REMOTE")
+OUTPUT=""
 
-if [ -z "$OUTPUT" ]; then
-  echo "Remote unavailable, falling back to local ollama..."
-  OUTPUT=$(call_ollama "$OLLAMA_LOCAL")
+if [ -f "$CONFIG_FILE" ]; then
+  INSTANCE_COUNT=$(jq -r '.instances | length' "$CONFIG_FILE")
+  i=0
+  while [ "$i" -lt "$INSTANCE_COUNT" ]; do
+    URL=$(jq -r ".instances[$i].url" "$CONFIG_FILE")
+    MODEL=$(jq -r ".instances[$i].model // \"qwen2.5-vl:7b\"" "$CONFIG_FILE")
+    echo "Generating PR title and description with $MODEL ($URL)..."
+    OUTPUT=$(call_ollama "$URL" "$MODEL")
+    [ -n "$OUTPUT" ] && break
+    echo "Unavailable, trying next instance..."
+    i=$((i + 1))
+  done
+else
+  echo "Generating PR title and description with qwen2.5-vl:7b (localhost)..."
+  OUTPUT=$(call_ollama "http://localhost:11434" "qwen2.5-vl:7b")
 fi
 
 if [ -z "$OUTPUT" ]; then
-  echo "Error: both remote and local ollama failed." >&2
+  echo "Error: all Ollama instances failed." >&2
   exit 1
 fi
 

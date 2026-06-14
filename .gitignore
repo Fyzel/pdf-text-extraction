@@ -254,4 +254,5 @@ cython_debug/
 
 # Local configuration — contains hostnames and network details, never commit
 ollama.json
+ollama-dev.json
 
