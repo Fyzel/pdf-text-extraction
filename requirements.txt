@@ -1,0 +1,6 @@
+bandit==1.9.4
+pre_commit==4.6.0
+pylint==4.0.5
+pytest==8.3.4
+pytest-mock==3.14.0
+PyYAML==6.0.3
