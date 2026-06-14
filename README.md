@@ -3,8 +3,8 @@
 A command line tool that converts PDF files to Markdown using AI-powered OCR via [Ollama](https://ollama.com). Each page is extracted as text, diagrams are saved as separate images with Markdown references, and tables are rendered as Markdown table syntax — all combined into a single `.md` file.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![CI Tests (main)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
-[![CI Tests (dev)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml/badge.svg?branch=dev)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
+[![CI (main)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/tests.yml?branch=main&label=CI%20%28main%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
+[![CI (dev)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/tests.yml?branch=dev&label=CI%20%28dev%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
 
 ## Features
 
