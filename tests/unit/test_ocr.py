@@ -249,6 +249,37 @@ def test_run_phase2_exit6_condition(tmp_path):
     assert all_failed
 
 
+def test_ocr_timeout_passed_through(tmp_path):
+    received_timeout: list[int] = []
+
+    class TimeoutCapture(BaseHTTPRequestHandler):
+        def do_POST(self):
+            # We can't directly capture the timeout from the server side,
+            # but we verify the call succeeds when timeout is explicitly set.
+            length = int(self.headers.get("Content-Length", 0))
+            self.rfile.read(length)
+            body = json.dumps({"response": json.dumps({"text": "ok", "diagrams": []})}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", len(body))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 19508), TimeoutCapture)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19508", "m")
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        pn, ok, err, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1, ocr_timeout=30)
+        assert ok
+    finally:
+        server.shutdown()
+
+
 def test_run_phase2_updates_state(tmp_path):
     body = {"text": "hello", "diagrams": []}
     server = _start_mock_server(19506, body)

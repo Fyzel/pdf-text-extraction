@@ -7,6 +7,7 @@ from typing import Any
 
 DEFAULT_MODEL: str = "qwen3-vl:8b"
 DEFAULT_URL: str = "http://localhost:11434"
+DEFAULT_OCR_TIMEOUT: int = 600
 _CONFIG_FILENAME: str = "ollama.json"
 
 
@@ -30,10 +31,12 @@ class AppConfig:
     Attributes:
         instances: Ollama instances to distribute OCR work across.
         max_render_workers: Maximum parallel processes for Phase 1 image rendering.
+        ocr_timeout: Per-request HTTP timeout in seconds for Ollama OCR calls.
     """
 
     instances: list[OllamaInstance]
     max_render_workers: int
+    ocr_timeout: int
 
 
 def _parse(data: dict[str, Any], cpu_count: int) -> AppConfig:
@@ -71,7 +74,15 @@ def _parse(data: dict[str, Any], cpu_count: int) -> AppConfig:
             raise ValueError("max_render_workers must be a positive integer")
         workers = min(workers, cpu_count)
 
-    return AppConfig(instances=instances, max_render_workers=workers)
+    raw_timeout: Any = data.get("ocr_timeout")
+    if raw_timeout is None:
+        ocr_timeout: int = DEFAULT_OCR_TIMEOUT
+    else:
+        ocr_timeout = int(raw_timeout)
+        if ocr_timeout <= 0:
+            raise ValueError("ocr_timeout must be a positive integer")
+
+    return AppConfig(instances=instances, max_render_workers=workers, ocr_timeout=ocr_timeout)
 
 
 def load_config(pdf_path: Path) -> AppConfig:
@@ -110,4 +121,5 @@ def load_config(pdf_path: Path) -> AppConfig:
     return AppConfig(
         instances=[OllamaInstance(url=DEFAULT_URL, model=DEFAULT_MODEL)],
         max_render_workers=cpu_count,
+        ocr_timeout=DEFAULT_OCR_TIMEOUT,
     )
