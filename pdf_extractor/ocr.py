@@ -12,7 +12,7 @@ import fitz
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.state import AppState, StateManager
 
-_OCR_TIMEOUT: int = 300  # seconds — large or complex pages can take time
+_DEFAULT_OCR_TIMEOUT: int = 600  # fallback only; overridden by AppConfig.ocr_timeout
 
 _PROMPT: str = """\
 Analyze this document page image. Return ONLY a valid JSON object with this exact structure:
@@ -42,12 +42,13 @@ def _encode_image(jpeg_path: Path) -> str:
     return base64.b64encode(jpeg_path.read_bytes()).decode("utf-8")
 
 
-def _call_ollama(instance: OllamaInstance, image_b64: str) -> str:
+def _call_ollama(instance: OllamaInstance, image_b64: str, timeout: int) -> str:
     """POST a page image to an Ollama instance and return the raw response text.
 
     Args:
         instance: Ollama instance to call.
         image_b64: Base64-encoded JPEG image string.
+        timeout: HTTP request timeout in seconds.
 
     Returns:
         Raw ``response`` string from the Ollama JSON reply.
@@ -70,7 +71,7 @@ def _call_ollama(instance: OllamaInstance, image_b64: str) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=_OCR_TIMEOUT) as resp:  # nosec B310
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310
         body: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
 
     response_text: str = body.get("response", "")
@@ -172,6 +173,7 @@ def _ocr_page_with_retry(
     pages_dir: Path,
     diagrams_dir: Path,
     page_count: int,
+    ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
@@ -185,6 +187,7 @@ def _ocr_page_with_retry(
         pages_dir: Directory containing the rendered page JPEG files.
         diagrams_dir: Directory where cropped diagram images will be written.
         page_count: Total page count for zero-padded filename generation.
+        ocr_timeout: Per-request HTTP timeout in seconds.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -198,7 +201,7 @@ def _ocr_page_with_retry(
     for instance in instances_ordered:
         try:
             image_b64: str = _encode_image(jpeg_path)
-            raw: str = _call_ollama(instance, image_b64)
+            raw: str = _call_ollama(instance, image_b64, ocr_timeout)
             data: dict[str, Any] = _parse_ocr_response(raw)
         except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError) as exc:
             last_error = f"{instance.url}: {exc}"
@@ -245,6 +248,7 @@ def run_phase2(
     instances: list[OllamaInstance],
     state: AppState,
     state_mgr: StateManager,
+    ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
 ) -> None:
     """Run Phase 2 OCR concurrently across all available Ollama instances.
 
@@ -259,15 +263,16 @@ def run_phase2(
         instances: Reachable Ollama instances to distribute OCR work across.
         state: Shared AppState mutated under the StateManager lock.
         state_mgr: StateManager for serialised, atomic state writes.
+        ocr_timeout: Per-request HTTP timeout in seconds passed to each worker.
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
     n: int = len(instances)
 
-    def _args(page_num: int) -> tuple[int, list[OllamaInstance], Path, Path, int]:
+    def _args(page_num: int) -> tuple[int, list[OllamaInstance], Path, Path, int, int]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
-        return page_num, ordered, pages_dir, diagrams_dir, page_count
+        return page_num, ordered, pages_dir, diagrams_dir, page_count, ocr_timeout
 
     with ThreadPoolExecutor(max_workers=n) as executor:
         futures = {
