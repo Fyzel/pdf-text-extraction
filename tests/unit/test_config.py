@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from pdf_extractor.config import (
     DEFAULT_MODEL,
+    DEFAULT_OCR_TIMEOUT,
     DEFAULT_URL,
     AppConfig,
     OllamaInstance,
@@ -74,6 +75,30 @@ def test_parse_max_render_workers_zero_raises():
 
 def test_parse_max_render_workers_negative_raises():
     data = {"instances": [{"url": "http://h:11434"}], "max_render_workers": -2}
+    with pytest.raises(ValueError, match="positive"):
+        _parse(data, cpu_count=4)
+
+
+def test_parse_ocr_timeout_absent_uses_default():
+    data = {"instances": [{"url": "http://h:11434"}]}
+    cfg = _parse(data, cpu_count=4)
+    assert cfg.ocr_timeout == DEFAULT_OCR_TIMEOUT
+
+
+def test_parse_ocr_timeout_explicit():
+    data = {"instances": [{"url": "http://h:11434"}], "ocr_timeout": 900}
+    cfg = _parse(data, cpu_count=4)
+    assert cfg.ocr_timeout == 900
+
+
+def test_parse_ocr_timeout_zero_raises():
+    data = {"instances": [{"url": "http://h:11434"}], "ocr_timeout": 0}
+    with pytest.raises(ValueError, match="positive"):
+        _parse(data, cpu_count=4)
+
+
+def test_parse_ocr_timeout_negative_raises():
+    data = {"instances": [{"url": "http://h:11434"}], "ocr_timeout": -60}
     with pytest.raises(ValueError, match="positive"):
         _parse(data, cpu_count=4)
 
