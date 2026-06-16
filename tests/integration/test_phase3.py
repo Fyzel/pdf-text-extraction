@@ -68,6 +68,24 @@ def test_phase3_correct_page_order(tmp_path):
     assert content.index("--- PAGE 1 ---") < content.index("--- PAGE 2 ---") < content.index("--- PAGE 3 ---")
 
 
+def test_phase3_rewrites_diagram_refs(tmp_path):
+    out = tmp_path / "out"; out.mkdir()
+    pdf = tmp_path / "doc.pdf"; pdf.touch()
+    sm = StateManager(out)
+    st = sm.load_or_init(pdf, 1)
+    pages_dir = out / "pages"; pages_dir.mkdir(parents=True)
+    (pages_dir / "page_1.md").write_text(
+        "# Page 1\n\n![Diagram 1](diagrams/page_1_diagram_1.jpg)", encoding="utf-8"
+    )
+    sm.update_page(st, 1, image_done=True, ocr_done=True)
+
+    run_phase3(pdf, out, 1, st, sm)
+    content = (tmp_path / "doc.md").read_text(encoding="utf-8")
+    # Combined file sits beside the ``out/`` dir, so refs gain the dir-name prefix.
+    assert "![Diagram 1](out/diagrams/page_1_diagram_1.jpg)" in content
+    assert "](diagrams/" not in content
+
+
 def test_phase3_marks_combined_done(tmp_path):
     out = tmp_path / "out"; out.mkdir()
     pdf = tmp_path / "doc.pdf"; pdf.touch()
