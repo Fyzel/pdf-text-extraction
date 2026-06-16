@@ -22,6 +22,8 @@ test-001--one-page-text
 test-002--two-page-text
 test-003--three-page-text-diagram
 test-004--three-page-text-diagram
+test-005--three-page-text-diagram-table
+test-006--three-page-text-diagram-table-bullets
 "
 
 removed=0

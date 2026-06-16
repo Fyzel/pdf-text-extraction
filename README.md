@@ -12,6 +12,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 - AI OCR via `qwen2.5vl` (local or remote Ollama instance)
 - Diagram extraction — figures cropped at their exact PDF image bounds and saved as image files
 - Table recognition — rendered as Markdown table syntax, not images
+- Markdown list normalisation — sub-bullets get valid CommonMark markers and indentation so nested lists render correctly
 - Parallel PDF rendering across all available CPU cores
 - Concurrent OCR across multiple Ollama instances
 - Resumable — interrupted runs continue from where they left off
@@ -122,7 +123,7 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-121 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
+147 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
 
 To also run live tests against a real Ollama instance:
 
