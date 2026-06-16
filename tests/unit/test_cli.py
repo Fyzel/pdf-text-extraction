@@ -88,7 +88,7 @@ def test_exit4_no_ollama(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     pdf = tmp_path / "doc.pdf"
     _make_pdf(pdf)
-    cfg = {"instances": [{"url": "http://127.0.0.1:19599", "model": "qwen3-vl:8b"}]}
+    cfg = {"instances": [{"url": "http://127.0.0.1:19599", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     with patch.object(sys, "argv", ["main.py", str(pdf)]):
         assert run() == 4
@@ -102,7 +102,7 @@ def test_exit5_corrupt_pdf(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     port = 19590
     server = _start_ollama_mock(port, {"text": "x", "diagrams": []})
-    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen3-vl:8b"}]}
+    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
 
     corrupt = tmp_path / "bad.pdf"
@@ -125,7 +125,7 @@ def test_exit0_already_complete(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     port = 19591
     server = _start_ollama_mock(port, {"text": "hello", "diagrams": []})
-    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen3-vl:8b"}]}
+    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
 
     pdf = tmp_path / "doc.pdf"
@@ -153,7 +153,7 @@ def test_exit0_full_run(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     port = 19592
     server = _start_ollama_mock(port, {"text": "page text", "diagrams": []})
-    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen3-vl:8b"}]}
+    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
 
     pdf = tmp_path / "doc.pdf"

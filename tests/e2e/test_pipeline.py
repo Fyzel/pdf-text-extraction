@@ -76,7 +76,7 @@ def _copy_data(tmp_path: Path, name: str) -> Path:
 
 
 def _run(tmp_path: Path, pdf: Path, port: int, ocr_fn=None):
-    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen3-vl:8b"}]}
+    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     with patch.object(sys, "argv", ["main.py", str(pdf)]):
         return run()
@@ -256,7 +256,7 @@ def test_e2e_nonexistent_path(tmp_path):
 
 def test_e2e_no_ollama(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    cfg = {"instances": [{"url": "http://127.0.0.1:19598", "model": "qwen3-vl:8b"}]}
+    cfg = {"instances": [{"url": "http://127.0.0.1:19598", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     with patch.object(sys, "argv", ["main.py", str(FIXTURES / "simple.pdf")]):
         assert run() == 4

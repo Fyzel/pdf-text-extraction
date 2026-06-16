@@ -4,7 +4,7 @@ from pathlib import Path
 
 import fitz
 
-_DPI_SCALE: float = 2.0  # 144 DPI — sufficient resolution for qwen3-vl OCR
+_DPI_SCALE: float = 2.0  # 144 DPI — sufficient resolution for qwen2.5vl OCR
 
 
 def _page_filename(page_num: int, page_count: int) -> str:
