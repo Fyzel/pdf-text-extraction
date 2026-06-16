@@ -10,7 +10,7 @@ The processing steps are broken down in `docs/high-level-process.mermaid`.
 
 The application will iterate through each page of the PDF file and save each page as a JPEG file using PyMuPDF.
 
-For each of these JPEG files, the program will call a local or remote Ollama-hosted `qwen3-vl` instance to perform optical character recognition (OCR) on each page in order. A single Ollama call per page handles both OCR and diagram detection.
+For each of these JPEG files, the program will call a local or remote Ollama-hosted `qwen2.5vl` instance to perform optical character recognition (OCR) on each page in order. A single Ollama call per page handles both OCR and diagram detection.
 
 State for all processing is tracked in a unified `state.json` file inside the output directory. The state file records which pages have been successfully processed as JPEG files, which have been OCR'd, and whether the final combined file has been written. If multiple Ollama instances are configured, OCR processing is distributed concurrently across the available instances to optimize processing time.
 
@@ -32,7 +32,7 @@ If the application is re-run on the same PDF file, it checks `state.json` to det
 The application reads `ollama.json` from the following locations in order, using the first found:
 1. Directory containing the PDF file
 2. Project directory
-3. Built-in default: single local instance at `http://localhost:11434` with model `qwen3-vl:8b`
+3. Built-in default: single local instance at `http://localhost:11434` with model `qwen2.5vl:7b`
 
 `ollama.json` is excluded from version control (see `.gitignore`). Copy `ollama.sample.json` to `ollama.json` and edit to match your environment.
 
@@ -44,19 +44,19 @@ Each instance is an object with a `url` and optional per-instance `model` overri
 {
   "max_render_workers": 4,
   "instances": [
-    { "url": "http://host-a:11434", "model": "qwen3-vl:32b" },
-    { "url": "http://host-b:11434", "model": "qwen3-vl:8b" }
+    { "url": "http://host-a:11434", "model": "qwen2.5vl:32b" },
+    { "url": "http://host-b:11434", "model": "qwen2.5vl:7b" }
   ]
 }
 ```
 
 - `max_render_workers`: optional; caps Phase 1 process pool size; defaults to `os.cpu_count()` if omitted
 - `url`: Ollama base URL for this instance
-- `model`: optional; defaults to `qwen3-vl:8b` if omitted
+- `model`: optional; defaults to `qwen2.5vl:7b` if omitted
 
 **Model sizing guidance:**
-- Hosts with ≥20GB available memory (unified or VRAM): prefer `qwen3-vl:32b` for higher accuracy on complex pages
-- Hosts with ~16GB VRAM: use `qwen3-vl:8b` for fast throughput (~60-80 tok/s)
+- Hosts with ≥20GB available memory (unified or VRAM): prefer `qwen2.5vl:32b` for higher accuracy on complex pages
+- Hosts with ~16GB VRAM: use `qwen2.5vl:7b` for fast throughput (~60-80 tok/s)
 
 Before processing begins, the app probes each URL with `GET /api/tags`. Unreachable URLs are excluded from the working pool. If zero instances respond, the application exits with code 4.
 
@@ -162,7 +162,7 @@ Uses a thread pool with one worker thread per available Ollama instance.
 
 - Python 3.14
 - PyMuPDF (`fitz`) — PDF page rendering and JPEG export
-- Ollama hosted locally or remotely, running `qwen3-vl` (7b or 32b per instance)
+- Ollama hosted locally or remotely, running `qwen2.5vl` (7b or 32b per instance)
 
 ## Dev / Tooling Dependencies
 
@@ -258,7 +258,7 @@ PDF fixtures are **not committed to git** — they are generated programmaticall
 - No file found → built-in defaults applied
 - Malformed JSON → raises config error
 - Missing `instances` key → raises config error
-- Instance with no `model` → defaults to `qwen3-vl:8b`
+- Instance with no `model` → defaults to `qwen2.5vl:7b`
 - All instances unreachable (mocked health check) → exit 4
 - Mix of reachable and unreachable → unreachable excluded, processing continues
 - `max_render_workers` absent → worker count equals `os.cpu_count()`

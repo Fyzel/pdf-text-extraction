@@ -16,7 +16,7 @@ flowchart TD
     chkReadable -- No --> errNotReadable[Log: file not readable]
     errNotReadable --> EXIT3([Exit 3: File not readable])
 
-    chkReadable -- Yes --> loadConfig[Load ollama.json config\nBuild list of instance URLs\nFallback: localhost:11434 with qwen3-vl:8b]
+    chkReadable -- Yes --> loadConfig[Load ollama.json config\nBuild list of instance URLs\nFallback: localhost:11434 with qwen2.5vl:7b]
 
     loadConfig --> probeOllama{At least one\nOllama instance\nreachable?}
     probeOllama -- No --> errNoOllama[Log: no Ollama instances reachable]
@@ -60,7 +60,7 @@ flowchart TD
 
     ocrLoop --> assignInstance[Assign to next available\nOllama instance\nround-robin across reachable URLs]
 
-    assignInstance --> callOllama[Send pages/page_NNN.jpg\nto instance model\nqwen3-vl:8b or :32b\nRequest: full OCR text\n+ diagram bounding boxes]
+    assignInstance --> callOllama[Send pages/page_NNN.jpg\nto instance model\nqwen2.5vl:7b or :32b\nRequest: full OCR text\n+ diagram bounding boxes]
 
     callOllama --> ocrOk{Ollama response\nreceived OK?}
 
