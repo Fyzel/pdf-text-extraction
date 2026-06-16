@@ -9,7 +9,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 
 ## Features
 
-- AI OCR via `qwen3-vl` (local or remote Ollama instance)
+- AI OCR via `qwen2.5vl` (local or remote Ollama instance)
 - Diagram detection — bounding boxes cropped and saved as image files
 - Table recognition — rendered as Markdown table syntax, not images
 - Parallel PDF rendering across all available CPU cores
@@ -20,11 +20,10 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 
 - Python 3.14+
 - [Ollama](https://ollama.com) running locally or on a remote host
-- `qwen3-vl` model pulled in Ollama
+- `qwen2.5vl` model pulled in Ollama
 
 ```sh
-ollama pull qwen3-vl:8b     # ~16GB VRAM
-ollama pull qwen3-vl:32b    # ~20GB unified/VRAM, higher accuracy
+ollama pull qwen2.5vl:7b    # recommended — lower memory pressure
 ```
 
 ## Installation
@@ -69,7 +68,7 @@ cp ollama.sample.json ollama.json
 {
   "max_render_workers": 4,
   "instances": [
-    { "url": "http://localhost:11434", "model": "qwen3-vl:8b" }
+    { "url": "http://localhost:11434", "model": "qwen2.5vl:7b" }
   ]
 }
 ```
@@ -78,7 +77,7 @@ cp ollama.sample.json ollama.json
 |-------|----------|---------|-------------|
 | `max_render_workers` | No | All CPU cores | Cap on parallel PDF rendering processes |
 | `instances[].url` | Yes | — | Ollama base URL |
-| `instances[].model` | No | `qwen3-vl:8b` | Model for this instance |
+| `instances[].model` | No | `qwen2.5vl:7b` | Model for this instance |
 
 Multiple instances are supported — pages are distributed across them concurrently. See the [Configuration wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Configuration) for full details.
 
@@ -123,7 +122,17 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-107 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked. See the [Testing wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Testing) for details.
+120 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
+
+To also run live tests against a real Ollama instance:
+
+```sh
+pytest -m live
+```
+
+Live tests require `qwen2.5vl:7b` reachable at the URL configured in `ollama.json`. They are automatically skipped if no instance is reachable.
+
+See the [Testing wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Testing) for details.
 
 ## Documentation
 
