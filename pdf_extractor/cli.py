@@ -133,7 +133,10 @@ def run() -> int:
             f"with {len(config.instances)} instance(s) "
             f"(timeout {config.ocr_timeout}s)..."
         )
-        run_phase2(output_dir, page_count, ocr_pending, config.instances, state, state_mgr, config.ocr_timeout)
+        run_phase2(
+            output_dir, page_count, ocr_pending, config.instances,
+            state, state_mgr, config.ocr_timeout, pdf_path,
+        )
 
     rendered_pages: list[int] = [
         i for i in range(1, page_count + 1) if state.pages[str(i)].image_done
