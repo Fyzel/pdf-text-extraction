@@ -67,6 +67,23 @@ def _copy_fixture(tmp_path: Path, name: str) -> Path:
     return dst
 
 
+def _markdown_table_blocks(content: str) -> list[list[str]]:
+    """Return each contiguous run of pipe-prefixed lines as a list of lines."""
+    lines = content.split("\n")
+    blocks: list[list[str]] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith("|"):
+            j = i
+            while j < len(lines) and lines[j].lstrip().startswith("|"):
+                j += 1
+            blocks.append(lines[i:j])
+            i = j
+        else:
+            i += 1
+    return blocks
+
+
 def _copy_data(tmp_path: Path, name: str) -> Path:
     """Copy a data PDF into tmp_path so output lands there, not in data/."""
     src = DATA / name
@@ -191,7 +208,14 @@ def test_e2e_tables(tmp_path, monkeypatch):
         code = _run(tmp_path, pdf, port)
         assert code == 0
         content = (tmp_path / "tables.md").read_text(encoding="utf-8")
-        assert "| Col1 | Col2 |" in content
+        # Tables are sourced from the PDF, not the model text (issue #44): the
+        # model's table block is replaced with the grid extracted from the page.
+        assert "R0C0" in content, "Expected PDF-extracted table content"
+        assert "| Col1 | Col2 |" not in content, "Model table block should be replaced"
+        # Every Markdown table block has a consistent column count.
+        for block in _markdown_table_blocks(content):
+            counts = {line.count("|") for line in block}
+            assert len(counts) == 1, f"Inconsistent columns: {block}"
         diag_dir = tmp_path / "tables" / "diagrams"
         assert not diag_dir.exists()
     finally:

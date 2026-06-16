@@ -12,6 +12,7 @@ import fitz
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.mdlint import normalize_markdown
 from pdf_extractor.render import _DPI_SCALE
+from pdf_extractor.tables import extract_tables_markdown, splice_tables
 from pdf_extractor.state import AppState, StateManager
 
 _DEFAULT_OCR_TIMEOUT: int = 600  # fallback only; overridden by AppConfig.ocr_timeout
@@ -283,6 +284,12 @@ def _ocr_page_with_retry(
             continue
 
         page_text: str = normalize_markdown(str(data.get("text", "")))
+        # Replace the model's unreliable table transcription with tables read
+        # straight from the PDF, when a source PDF is available.
+        if pdf_path is not None:
+            page_text = splice_tables(
+                page_text, extract_tables_markdown(str(pdf_path), page_num)
+            )
         raw_diagrams: list[dict[str, Any]] = data.get("diagrams", [])
 
         cropped_count: int = 0
