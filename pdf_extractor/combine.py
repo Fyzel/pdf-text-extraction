@@ -40,6 +40,10 @@ def run_phase3(
         stem: str = f"page_{page_num:0{width}d}"
         md_path: Path = pages_dir / f"{stem}.md"
         content: str = md_path.read_text(encoding="utf-8") if md_path.is_file() else ""
+        # Per-page md stores diagram refs relative to output_dir (``diagrams/...``).
+        # The combined file lives one level up, alongside ``<stem>/``, so rewrite
+        # refs to be relative to it: ``<stem>/diagrams/...``.
+        content = content.replace("](diagrams/", f"]({output_dir.name}/diagrams/")
         parts.append(f"--- PAGE {page_num} ---\n{content}")
 
     combined: str = "\n\n".join(parts)

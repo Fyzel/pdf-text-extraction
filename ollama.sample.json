@@ -2,6 +2,7 @@
   "max_render_workers": 4,
   "ocr_timeout": 600,
   "instances": [
-    { "url": "http://localhost:11434", "model": "qwen3-vl:8b" }
+    { "url": "http://localhost:11434", "model": "qwen2.5vl:7b" },
+    { "url": "http://example.com:11434", "model": "qwen2.5vl:7b" }
   ]
 }

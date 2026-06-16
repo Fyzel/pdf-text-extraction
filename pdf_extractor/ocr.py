@@ -13,6 +13,7 @@ from pdf_extractor.config import OllamaInstance
 from pdf_extractor.state import AppState, StateManager
 
 _DEFAULT_OCR_TIMEOUT: int = 600  # fallback only; overridden by AppConfig.ocr_timeout
+_BBOX_TRIM_RATIO: float = 0.05  # trim 5% off right and bottom edges of model-returned bboxes
 
 _PROMPT: str = """\
 Analyze this document page image. Return ONLY a valid JSON object with this exact structure:
@@ -23,8 +24,8 @@ Analyze this document page image. Return ONLY a valid JSON object with this exac
 }
 
 Rules:
-- text: include ALL text, formatted as markdown (headings, lists, bold, italics).
-- diagrams: pixel bounding boxes for figures, charts, illustrations only. Empty array if none.
+- text: include ALL text, formatted as markdown (headings, lists, bold, italics). Use plain paragraphs for regular text — do NOT use blockquote syntax (>).
+- diagrams: pixel bounding boxes for figures, charts, illustrations only. Empty array if none. Boxes must be tight — no surrounding whitespace, margins, or text. Do not pad or expand beyond the visible edge of the figure.
 - tables: render as markdown table syntax inside the text field. Do NOT add tables to diagrams.
 - Return ONLY the JSON object. No explanations, no code fences, no other text.\
 """
@@ -106,6 +107,12 @@ def _parse_ocr_response(response_text: str) -> dict[str, Any]:
         raise ValueError("response missing 'text' field")
     if "diagrams" not in data:
         raise ValueError("response missing 'diagrams' field")
+
+    raw_text: str = data["text"]
+    lines = raw_text.splitlines()
+    data["text"] = "\n".join(
+        line[2:] if line.startswith("> ") else line for line in lines
+    )
     return data
 
 
@@ -218,12 +225,14 @@ def _ocr_page_with_retry(
                 diag_filename: str = f"{stem}_diagram_{idx}.jpg"
                 diag_path: Path = diagrams_dir / diag_filename
                 diagrams_dir.mkdir(parents=True, exist_ok=True)
+                raw_w: int = int(bbox.get("width", 0))
+                raw_h: int = int(bbox.get("height", 0))
                 _crop_diagram(
                     jpeg_path,
                     int(bbox.get("x", 0)),
                     int(bbox.get("y", 0)),
-                    int(bbox.get("width", 0)),
-                    int(bbox.get("height", 0)),
+                    int(raw_w * (1 - _BBOX_TRIM_RATIO)),
+                    int(raw_h * (1 - _BBOX_TRIM_RATIO)),
                     diag_path,
                 )
                 diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")

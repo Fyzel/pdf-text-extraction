@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MODEL: str = "qwen3-vl:8b"
+DEFAULT_MODEL: str = "qwen2.5vl:7b"
 DEFAULT_URL: str = "http://localhost:11434"
 DEFAULT_OCR_TIMEOUT: int = 600
 _CONFIG_FILENAME: str = "ollama.json"
@@ -91,7 +91,7 @@ def load_config(pdf_path: Path) -> AppConfig:
     Search order:
         1. Directory containing the PDF file.
         2. Current working directory.
-        3. Built-in defaults (``http://localhost:11434``, model ``qwen3-vl:8b``).
+        3. Built-in defaults (``http://localhost:11434``, model ``qwen2.5vl:7b``).
 
     Args:
         pdf_path: Path to the input PDF file.
