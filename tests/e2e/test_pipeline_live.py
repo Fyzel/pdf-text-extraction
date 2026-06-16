@@ -51,6 +51,35 @@ def _image_similarity(path_a: Path, path_b: Path) -> float:
     return 1.0 - diff / (255 * len(a))
 
 
+def _assert_tables_well_formed(content: str) -> None:
+    """Assert every Markdown table block has a consistent column count.
+
+    Scans contiguous runs of pipe-prefixed lines and checks that the header,
+    delimiter, and all body rows share the same number of cells. Guards against
+    the malformed-table regression in issue #44.
+    """
+    lines = content.split("\n")
+    blocks = 0
+    i = 0
+    while i < len(lines):
+        if lines[i].lstrip().startswith("|"):
+            j = i
+            while j < len(lines) and lines[j].lstrip().startswith("|"):
+                j += 1
+            block = lines[i:j]
+            counts = {line.count("|") for line in block}
+            assert len(counts) == 1, (
+                f"Table block has inconsistent column counts {counts}:\n"
+                + "\n".join(block)
+            )
+            assert len(block) >= 2, "Table block missing delimiter row"
+            blocks += 1
+            i = j
+        else:
+            i += 1
+    assert blocks >= 1, "Expected at least one Markdown table in the output"
+
+
 def _load_project_config() -> dict:
     cfg_path = _PROJECT_ROOT / "ollama.json"
     if cfg_path.exists():
@@ -200,6 +229,7 @@ def test_live_005_three_page_text_diagram_table(tmp_path, monkeypatch, live_conf
     assert content.index("--- PAGE 1 ---") < content.index("--- PAGE 2 ---") < content.index("--- PAGE 3 ---")
     assert "> " not in content, "Blockquote prefix '> ' must not appear in OCR output"
     assert "|" in content, "Expected a Markdown table in the output text"
+    _assert_tables_well_formed(content)
 
     expected = (DATA / "test-005--three-page-text-diagram-table-expected.md").read_text(encoding="utf-8")
     ratio = difflib.SequenceMatcher(None, content.strip(), expected.strip()).ratio()
@@ -240,6 +270,8 @@ def test_live_006_three_page_text_diagram_table_bullets(tmp_path, monkeypatch, l
     assert normalize_markdown(content) == content, (
         "Combined output contains list markup the normaliser would still fix"
     )
+    # Tables must be well-formed (issue #44).
+    _assert_tables_well_formed(content)
 
     expected = (DATA / "test-006--three-page-text-diagram-table-bullets-expected.md").read_text(encoding="utf-8")
     ratio = difflib.SequenceMatcher(None, content.strip(), expected.strip()).ratio()
