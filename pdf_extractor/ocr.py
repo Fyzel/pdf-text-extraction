@@ -10,6 +10,7 @@ from typing import Any
 import fitz
 
 from pdf_extractor.config import OllamaInstance
+from pdf_extractor.mdlint import normalize_markdown
 from pdf_extractor.render import _DPI_SCALE
 from pdf_extractor.state import AppState, StateManager
 
@@ -281,7 +282,7 @@ def _ocr_page_with_retry(
             last_error = f"{instance.url}: {exc}"
             continue
 
-        page_text: str = str(data.get("text", ""))
+        page_text: str = normalize_markdown(str(data.get("text", "")))
         raw_diagrams: list[dict[str, Any]] = data.get("diagrams", [])
 
         cropped_count: int = 0

@@ -19,6 +19,7 @@ import pytest
 from pdf_extractor.cli import run
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.health import probe_instances
+from pdf_extractor.mdlint import normalize_markdown
 
 pytestmark = pytest.mark.live
 
@@ -233,6 +234,12 @@ def test_live_006_three_page_text_diagram_table_bullets(tmp_path, monkeypatch, l
     assert any(
         line.lstrip().startswith(("- ", "* ")) for line in content.splitlines()
     ), "Expected a Markdown bullet list in the output text"
+
+    # Page output must already be list-normalised (issue #39): re-running the
+    # normaliser is a no-op when markers and numbering are valid.
+    assert normalize_markdown(content) == content, (
+        "Combined output contains list markup the normaliser would still fix"
+    )
 
     expected = (DATA / "test-006--three-page-text-diagram-table-bullets-expected.md").read_text(encoding="utf-8")
     ratio = difflib.SequenceMatcher(None, content.strip(), expected.strip()).ratio()
