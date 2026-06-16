@@ -10,7 +10,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 ## Features
 
 - AI OCR via `qwen2.5vl` (local or remote Ollama instance)
-- Diagram detection — bounding boxes cropped and saved as image files
+- Diagram extraction — figures cropped at their exact PDF image bounds and saved as image files
 - Table recognition — rendered as Markdown table syntax, not images
 - Parallel PDF rendering across all available CPU cores
 - Concurrent OCR across multiple Ollama instances

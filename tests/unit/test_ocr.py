@@ -10,6 +10,8 @@ import fitz
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.ocr import (
     _crop_diagram,
+    _crop_pdf_region,
+    _embedded_image_rects,
     _ocr_page_with_retry,
     _parse_ocr_response,
     run_phase2,
@@ -30,6 +32,29 @@ def _make_jpeg(path: Path, w: int = 400, h: int = 300) -> tuple[int, int]:
     pix.save(str(path))
     doc.close()
     return pix.width, pix.height
+
+
+def _make_pdf_with_image(
+    path: Path,
+    rect: fitz.Rect = fitz.Rect(100, 120, 300, 260),
+    page_count: int = 1,
+    image_page: int = 1,
+) -> None:
+    """Write a PDF whose ``image_page`` embeds one raster image at ``rect``."""
+    img = fitz.open()
+    ip = img.new_page(width=200, height=140)
+    ip.draw_rect(ip.rect, color=(1, 0, 0), fill=(1, 0, 0))
+    pix = ip.get_pixmap()
+    img.close()
+
+    doc = fitz.open()
+    for n in range(1, page_count + 1):
+        pg = doc.new_page(width=612, height=792)
+        pg.insert_text((72, 72), f"page {n} text")
+        if n == image_page:
+            pg.insert_image(rect, pixmap=pix)
+    doc.save(str(path))
+    doc.close()
 
 
 def _start_mock_server(port: int, response_body: dict | str) -> HTTPServer:
@@ -221,6 +246,85 @@ def test_ocr_retries_all_instances(tmp_path):
 # ---------------------------------------------------------------------------
 # Round-robin ordering
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# _embedded_image_rects / _crop_pdf_region
+# ---------------------------------------------------------------------------
+
+def test_embedded_image_rects_returns_rect(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf_with_image(pdf, rect=fitz.Rect(100, 120, 300, 260))
+    rects = _embedded_image_rects(pdf, 1)
+    assert len(rects) == 1
+    r = rects[0]
+    assert (round(r.x0), round(r.y0), round(r.x1), round(r.y1)) == (100, 120, 300, 260)
+
+
+def test_embedded_image_rects_empty_when_no_image(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf_with_image(pdf, page_count=2, image_page=1)
+    assert _embedded_image_rects(pdf, 2) == []
+
+
+def test_crop_pdf_region_matches_rect_at_dpi_scale(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    rect = fitz.Rect(100, 120, 300, 260)
+    _make_pdf_with_image(pdf, rect=rect)
+    out = tmp_path / "crop.jpg"
+    _crop_pdf_region(pdf, 1, rect, out)
+    assert out.is_file()
+    pix = fitz.Pixmap(str(out))
+    # render.py renders at _DPI_SCALE = 2.0
+    assert pix.width == round(rect.width * 2)
+    assert pix.height == round(rect.height * 2)
+
+
+def test_ocr_prefers_pdf_rects_over_model_bbox(tmp_path):
+    # Model reports a wildly greedy bbox; the crop must follow the exact PDF rect.
+    body = {"text": "Fig", "diagrams": [{"x": 0, "y": 0, "width": 9999, "height": 9999}]}
+    server = _start_mock_server(19510, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19510", "m")
+        pdf = tmp_path / "doc.pdf"
+        rect = fitz.Rect(100, 120, 300, 260)
+        _make_pdf_with_image(pdf, rect=rect)
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        diags = tmp_path / "diagrams"
+        _, ok, _, dcnt = _ocr_page_with_retry(
+            1, [inst], pages, diags, 1, pdf_path=pdf
+        )
+        assert ok
+        assert dcnt == 1
+        crop = diags / "page_1_diagram_1.jpg"
+        assert crop.is_file()
+        pix = fitz.Pixmap(str(crop))
+        assert pix.width == round(rect.width * 2)
+        assert pix.height == round(rect.height * 2)
+    finally:
+        server.shutdown()
+
+
+def test_ocr_falls_back_to_model_bbox_for_vector_figure(tmp_path):
+    # PDF page has no embedded raster; crop must use the model bbox from the JPEG.
+    body = {"text": "Fig", "diagrams": [{"x": 10, "y": 10, "width": 100, "height": 80}]}
+    server = _start_mock_server(19511, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19511", "m")
+        pdf = tmp_path / "doc.pdf"
+        _make_pdf_with_image(pdf, page_count=2, image_page=1)  # page 2 has no image
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_2.jpg")
+        diags = tmp_path / "diagrams"
+        _, ok, _, dcnt = _ocr_page_with_retry(
+            2, [inst], pages, diags, 2, pdf_path=pdf
+        )
+        assert ok
+        assert dcnt == 1
+        assert (diags / "page_2_diagram_1.jpg").is_file()
+    finally:
+        server.shutdown()
+
 
 def test_round_robin_ordering():
     instances = [
