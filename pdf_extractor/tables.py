@@ -15,6 +15,11 @@ import re
 
 import fitz
 
+# Silence the one-time "Consider using the pymupdf_layout package …" notice that
+# find_tables prints to stdout; it would otherwise clutter every run.
+if hasattr(fitz, "no_recommend_layout"):
+    fitz.no_recommend_layout()
+
 
 def _clean_cell(value: str | None) -> str:
     """Collapse a raw table cell to single-line Markdown-safe text.
