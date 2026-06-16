@@ -122,7 +122,7 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-120 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
+121 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
 
 To also run live tests against a real Ollama instance:
 
@@ -131,6 +131,16 @@ pytest -m live
 ```
 
 Live tests require `qwen2.5vl:7b` reachable at the URL configured in `ollama.json`. They are automatically skipped if no instance is reachable.
+
+### Cleaning manual test runs
+
+Running `main.py` against the sample PDFs in `tests/data/` leaves generated output behind (`<stem>/` working dirs and `<stem>.md` files). Remove it with:
+
+```sh
+bin/clean-test-data
+```
+
+Portable POSIX `sh` — works under Git Bash (Windows), Linux, and macOS. Source PDFs and checked-in `*-expected.md` fixtures are left untouched.
 
 See the [Testing wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Testing) for details.
 
