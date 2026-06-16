@@ -10,6 +10,7 @@ from typing import Any
 import fitz
 
 from pdf_extractor.config import OllamaInstance
+from pdf_extractor.render import _DPI_SCALE
 from pdf_extractor.state import AppState, StateManager
 
 _DEFAULT_OCR_TIMEOUT: int = 600  # fallback only; overridden by AppConfig.ocr_timeout
@@ -160,6 +161,63 @@ def _crop_diagram(
     doc.close()
 
 
+def _embedded_image_rects(pdf_path: Path, page_num: int) -> list[fitz.Rect]:
+    """Return the page-coordinate rectangles of raster images embedded in a page.
+
+    These rects come straight from the PDF object model, so they bound the figure
+    exactly — unlike the vision model's bounding boxes, which tend to overshoot
+    into surrounding captions and body text. Rects are ordered top-to-bottom,
+    then left-to-right, to give stable diagram numbering.
+
+    Args:
+        pdf_path: Path to the source PDF file.
+        page_num: 1-based page number.
+
+    Returns:
+        List of ``fitz.Rect`` in page points; empty if the page embeds no images
+        (e.g. a vector-only figure).
+    """
+    doc: fitz.Document = fitz.open(str(pdf_path))
+    try:
+        page: fitz.Page = doc[page_num - 1]
+        rects: list[fitz.Rect] = []
+        for img in page.get_images(full=True):
+            xref: int = img[0]
+            rects.extend(fitz.Rect(r) for r in page.get_image_rects(xref))
+    finally:
+        doc.close()
+    rects.sort(key=lambda r: (round(r.y0), round(r.x0)))
+    return rects
+
+
+def _crop_pdf_region(
+    pdf_path: Path,
+    page_num: int,
+    rect: fitz.Rect,
+    output_path: Path,
+) -> None:
+    """Render a page-coordinate rectangle from the PDF directly to a JPEG.
+
+    Rendering from the source page at the Phase 1 DPI yields a clean, full-quality
+    crop with no recompression of the already-rasterised page image.
+
+    Args:
+        pdf_path: Path to the source PDF file.
+        page_num: 1-based page number.
+        rect: Region to crop, in page points.
+        output_path: Destination path for the cropped JPEG.
+    """
+    doc: fitz.Document = fitz.open(str(pdf_path))
+    try:
+        page: fitz.Page = doc[page_num - 1]
+        pix: fitz.Pixmap = page.get_pixmap(
+            matrix=fitz.Matrix(_DPI_SCALE, _DPI_SCALE), clip=rect
+        )
+        pix.save(str(output_path))
+    finally:
+        doc.close()
+
+
 def _page_stem(page_num: int, page_count: int) -> str:
     """Return the zero-padded filename stem for a page (without extension).
 
@@ -181,12 +239,19 @@ def _ocr_page_with_retry(
     diagrams_dir: Path,
     page_count: int,
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
+    pdf_path: Path | None = None,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
     On success, writes the per-page markdown file and any cropped diagram images.
     Round-robin is achieved by the caller rotating ``instances_ordered`` based on
     page number before calling this function.
+
+    Diagram cropping prefers the PDF's embedded image rects (exact bounds) when
+    ``pdf_path`` is supplied and the page embeds raster images; it falls back to
+    the vision model's bounding boxes only for vector-only figures or when no PDF
+    is available. The model's non-empty ``diagrams`` list gates whether any crop
+    happens at all, so pages with purely decorative images stay text-only.
 
     Args:
         page_num: 1-based page number.
@@ -195,6 +260,8 @@ def _ocr_page_with_retry(
         diagrams_dir: Directory where cropped diagram images will be written.
         page_count: Total page count for zero-padded filename generation.
         ocr_timeout: Per-request HTTP timeout in seconds.
+        pdf_path: Source PDF, used for exact embedded-image crops. When ``None``,
+            diagrams are cropped from the rendered JPEG using model bboxes.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -220,25 +287,45 @@ def _ocr_page_with_retry(
         cropped_count: int = 0
         diagram_refs: list[str] = []
 
-        for idx, bbox in enumerate(raw_diagrams, start=1):
-            try:
-                diag_filename: str = f"{stem}_diagram_{idx}.jpg"
-                diag_path: Path = diagrams_dir / diag_filename
-                diagrams_dir.mkdir(parents=True, exist_ok=True)
-                raw_w: int = int(bbox.get("width", 0))
-                raw_h: int = int(bbox.get("height", 0))
-                _crop_diagram(
-                    jpeg_path,
-                    int(bbox.get("x", 0)),
-                    int(bbox.get("y", 0)),
-                    int(raw_w * (1 - _BBOX_TRIM_RATIO)),
-                    int(raw_h * (1 - _BBOX_TRIM_RATIO)),
-                    diag_path,
-                )
-                diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
-                cropped_count += 1
-            except Exception as exc:  # noqa: BLE001
-                print(f"  Page {page_num} diagram {idx}: crop failed — {exc}")
+        # Prefer exact embedded-image rects from the PDF; fall back to the model's
+        # bounding boxes only for vector-only figures or when no PDF is available.
+        rects: list[fitz.Rect] = (
+            _embedded_image_rects(pdf_path, page_num)
+            if raw_diagrams and pdf_path is not None
+            else []
+        )
+
+        if rects:
+            for idx, rect in enumerate(rects, start=1):
+                try:
+                    diag_filename: str = f"{stem}_diagram_{idx}.jpg"
+                    diag_path: Path = diagrams_dir / diag_filename
+                    diagrams_dir.mkdir(parents=True, exist_ok=True)
+                    _crop_pdf_region(pdf_path, page_num, rect, diag_path)
+                    diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
+                    cropped_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  Page {page_num} diagram {idx}: crop failed — {exc}")
+        else:
+            for idx, bbox in enumerate(raw_diagrams, start=1):
+                try:
+                    diag_filename = f"{stem}_diagram_{idx}.jpg"
+                    diag_path = diagrams_dir / diag_filename
+                    diagrams_dir.mkdir(parents=True, exist_ok=True)
+                    raw_w: int = int(bbox.get("width", 0))
+                    raw_h: int = int(bbox.get("height", 0))
+                    _crop_diagram(
+                        jpeg_path,
+                        int(bbox.get("x", 0)),
+                        int(bbox.get("y", 0)),
+                        int(raw_w * (1 - _BBOX_TRIM_RATIO)),
+                        int(raw_h * (1 - _BBOX_TRIM_RATIO)),
+                        diag_path,
+                    )
+                    diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
+                    cropped_count += 1
+                except Exception as exc:  # noqa: BLE001
+                    print(f"  Page {page_num} diagram {idx}: crop failed — {exc}")
 
         parts: list[str] = [page_text]
         if diagram_refs:
@@ -258,6 +345,7 @@ def run_phase2(
     state: AppState,
     state_mgr: StateManager,
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
+    pdf_path: Path | None = None,
 ) -> None:
     """Run Phase 2 OCR concurrently across all available Ollama instances.
 
@@ -273,15 +361,18 @@ def run_phase2(
         state: Shared AppState mutated under the StateManager lock.
         state_mgr: StateManager for serialised, atomic state writes.
         ocr_timeout: Per-request HTTP timeout in seconds passed to each worker.
+        pdf_path: Source PDF, forwarded to workers for exact embedded-image crops.
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
     n: int = len(instances)
 
-    def _args(page_num: int) -> tuple[int, list[OllamaInstance], Path, Path, int, int]:
+    def _args(
+        page_num: int,
+    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
-        return page_num, ordered, pages_dir, diagrams_dir, page_count, ocr_timeout
+        return page_num, ordered, pages_dir, diagrams_dir, page_count, ocr_timeout, pdf_path
 
     with ThreadPoolExecutor(max_workers=n) as executor:
         futures = {
