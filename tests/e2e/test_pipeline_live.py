@@ -182,3 +182,68 @@ def test_live_004_three_page_text_diagram(tmp_path, monkeypatch, live_config):
     reference = DATA / "images" / "test-004-diagram1.png"
     sim = _image_similarity(extracted[0], reference)
     assert sim >= 0.75, f"Extracted diagram similarity to reference is only {sim:.2%}"
+
+
+# ---------------------------------------------------------------------------
+# test-005 — 3 pages, text + diagram + table
+# ---------------------------------------------------------------------------
+
+def test_live_005_three_page_text_diagram_table(tmp_path, monkeypatch, live_config):
+    monkeypatch.chdir(tmp_path)
+    code, content = _run_pipeline(
+        tmp_path, "test-005--three-page-text-diagram-table.pdf", live_config
+    )
+
+    assert code == 0
+    assert content.count("--- PAGE") == 3
+    assert content.index("--- PAGE 1 ---") < content.index("--- PAGE 2 ---") < content.index("--- PAGE 3 ---")
+    assert "> " not in content, "Blockquote prefix '> ' must not appear in OCR output"
+    assert "|" in content, "Expected a Markdown table in the output text"
+
+    expected = (DATA / "test-005--three-page-text-diagram-table-expected.md").read_text(encoding="utf-8")
+    ratio = difflib.SequenceMatcher(None, content.strip(), expected.strip()).ratio()
+    assert ratio >= 0.85, f"OCR output similarity to expected is only {ratio:.2%}"
+
+    diag_dir = tmp_path / "test-005--three-page-text-diagram-table" / "diagrams"
+    assert diag_dir.is_dir(), "Expected diagram directory to be created"
+    extracted = sorted(diag_dir.glob("*.jpg"))
+    assert len(extracted) > 0, "Expected at least one diagram image"
+    assert "![Diagram" in content, "Expected diagram Markdown reference in output"
+
+    reference = DATA / "images" / "test-005-diagram1.png"
+    sim = _image_similarity(extracted[0], reference)
+    assert sim >= 0.75, f"Extracted diagram similarity to reference is only {sim:.2%}"
+
+
+# ---------------------------------------------------------------------------
+# test-006 — 3 pages, text + diagram + table + bullets
+# ---------------------------------------------------------------------------
+
+def test_live_006_three_page_text_diagram_table_bullets(tmp_path, monkeypatch, live_config):
+    monkeypatch.chdir(tmp_path)
+    code, content = _run_pipeline(
+        tmp_path, "test-006--three-page-text-diagram-table-bullets.pdf", live_config
+    )
+
+    assert code == 0
+    assert content.count("--- PAGE") == 3
+    assert content.index("--- PAGE 1 ---") < content.index("--- PAGE 2 ---") < content.index("--- PAGE 3 ---")
+    assert "> " not in content, "Blockquote prefix '> ' must not appear in OCR output"
+    assert "|" in content, "Expected a Markdown table in the output text"
+    assert any(
+        line.lstrip().startswith(("- ", "* ")) for line in content.splitlines()
+    ), "Expected a Markdown bullet list in the output text"
+
+    expected = (DATA / "test-006--three-page-text-diagram-table-bullets-expected.md").read_text(encoding="utf-8")
+    ratio = difflib.SequenceMatcher(None, content.strip(), expected.strip()).ratio()
+    assert ratio >= 0.85, f"OCR output similarity to expected is only {ratio:.2%}"
+
+    diag_dir = tmp_path / "test-006--three-page-text-diagram-table-bullets" / "diagrams"
+    assert diag_dir.is_dir(), "Expected diagram directory to be created"
+    extracted = sorted(diag_dir.glob("*.jpg"))
+    assert len(extracted) > 0, "Expected at least one diagram image"
+    assert "![Diagram" in content, "Expected diagram Markdown reference in output"
+
+    reference = DATA / "images" / "test-006-diagram1.png"
+    sim = _image_similarity(extracted[0], reference)
+    assert sim >= 0.75, f"Extracted diagram similarity to reference is only {sim:.2%}"
