@@ -14,7 +14,7 @@ For each of these JPEG files, the program will call a local or remote Ollama-hos
 
 State for all processing is tracked in a unified `state.json` file inside the output directory. The state file records which pages have been successfully processed as JPEG files, which have been OCR'd, and whether the final combined file has been written. If multiple Ollama instances are configured, OCR processing is distributed concurrently across the available instances to optimize processing time.
 
-The OCRed text from each page is saved as an individual markdown file. If a page image contains a diagram, Ollama returns bounding box coordinates; the application crops those regions and saves them as separate image files in a designated directory. The markdown file for that page includes references to the extracted diagram images.
+The OCRed text from each page is saved as an individual markdown file. If Ollama flags a diagram on a page, the application crops the figure at its exact bounds — taken from the PDF's embedded image objects (`page.get_image_rects`) — and saves it as a separate image file in a designated directory. Cropping from the embedded image rect keeps the crop tight to the figure, with no surrounding caption or body text; the model's returned bounding box is used only as a fallback for vector-only figures that have no embedded raster image. The markdown file for that page includes references to the extracted diagram images.
 
 If the OCR processing for a page fails, the application logs the error and continues processing the remaining pages. A summary of any pages that failed to process is printed at the end of execution.
 
@@ -135,7 +135,7 @@ The prompt requests a structured JSON response:
 ```
 
 - `text`: full page OCR output in markdown format
-- `diagrams`: array of bounding boxes in pixels relative to the rendered JPEG; empty array if no diagrams present
+- `diagrams`: array of bounding boxes in pixels relative to the rendered JPEG; empty array if no diagrams present. A non-empty array acts as a per-page flag that the page contains a figure — the actual crop bounds are taken from the PDF's embedded image rects, not these coordinates (the coordinates are used only as a fallback for vector-only figures with no embedded raster image)
 
 If JSON parsing of the response fails, the page is treated as an OCR failure.
 
@@ -209,7 +209,7 @@ tests/
 ├── fixtures/
 │   ├── simple.pdf          — single page, plain text only
 │   ├── multipage.pdf       — 10 pages, plain text, tests pagination and ordering
-│   ├── diagrams.pdf        — pages containing embedded diagrams, tests bounding box crop path
+│   ├── diagrams.pdf        — pages containing embedded diagrams, tests the embedded-image-rect crop path
 │   ├── mixed.pdf           — combination of text-only and diagram pages
 │   ├── tables.pdf          — 3 pages: simple, multi-column, and complex/irregular tables
 │   └── corrupt.pdf         — malformed PDF, triggers exit 5
@@ -239,7 +239,7 @@ PDF fixtures are **not committed to git** — they are generated programmaticall
 |------|-------|---------|
 | `simple.pdf` | 1 | Baseline OCR path, plain text only, no diagrams or tables |
 | `multipage.pdf` | 10 | Page ordering, combined output structure, plain text only |
-| `diagrams.pdf` | 3 | Diagram detection, bounding box crop, image references in markdown |
+| `diagrams.pdf` | 3 | Diagram detection, embedded-image-rect crop, image references in markdown |
 | `mixed.pdf` | 5 | Mix of text-only and diagram pages |
 | `tables.pdf` | 3 | Page 1: simple table; page 2: multi-column table; page 3: complex table with irregular structure |
 | `corrupt.pdf` | N/A | Malformed file, triggers exit 5 (all pages fail image rendering) |
@@ -284,12 +284,14 @@ PDF fixtures are **not committed to git** — they are generated programmaticall
 
 ### `test_ocr.py` — Ollama OCR call and response parsing
 - Valid JSON response with text and empty diagrams → `ocr_done = true`, markdown saved
-- Valid JSON response with text and bounding boxes → diagrams cropped, markdown includes image references
+- Valid JSON response flagging a diagram on a page with an embedded image → figure cropped at the exact embedded-image rect, markdown includes image references
+- Valid JSON response flagging a diagram on a page with no embedded raster (vector-only) → falls back to cropping the model's bounding box from the JPEG
+- Embedded-image rect takes precedence over a greedy model bounding box → crop matches the figure bounds, not the model's overshoot
 - Invalid JSON response → page marked `ocr_failed`
 - HTTP error from Ollama → retry on next instance
 - All instances exhausted → page marked `ocr_failed`
 - All pages `ocr_failed` → exit 6
-- Bounding box coordinates out of JPEG bounds → cropped to image boundary, logged as warning
+- Bounding box coordinates out of JPEG bounds (fallback path) → cropped to image boundary, logged as warning
 - Round-robin distribution: pages assigned to instances in rotation
 - Table in OCR response rendered as markdown table (`| col | col |` syntax), not treated as diagram
 - Simple table (mocked response) → output markdown contains valid markdown table
@@ -313,7 +315,7 @@ PDF fixtures are **not committed to git** — they are generated programmaticall
 
 ### `test_phase2.py` — full OCR phase with mocked Ollama
 - Process all page JPEGs from `simple.pdf` with mocked response → per-page markdown produced
-- Process `diagrams.pdf` pages with mocked response including bounding boxes → diagram images cropped and saved, markdown references correct paths
+- Process `diagrams.pdf` pages with mocked response flagging diagrams → figures cropped at their embedded-image rects and saved, markdown references correct paths
 - Process `tables.pdf` pages with mocked response containing markdown tables → per-page markdown contains valid markdown table syntax; no diagram files created for table pages
 - Single Ollama instance fails mid-run → failed page marked, processing continues
 

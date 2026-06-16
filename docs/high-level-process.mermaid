@@ -69,9 +69,9 @@ flowchart TD
     retryOther -- No --> markOcrFail[Log OCR error for page N\nUpdate state.json\nocr_failed = true for page N]
     markOcrFail --> ocrLoopNext
 
-    ocrOk -- Yes --> chkDiagrams{Response includes\ndiagram bounding\nboxes?}
+    ocrOk -- Yes --> chkDiagrams{Response flags\na diagram on\nthe page?}
 
-    chkDiagrams -- Yes --> cropDiagrams[For each bounding box M on page N\nCrop region from page_NNN.jpg\nSave: diagrams/page_NNN_diagram_M.jpg]
+    chkDiagrams -- Yes --> cropDiagrams[For each embedded image rect M on page N\nCrop exact rect from the PDF page\nFallback to model bbox for vector-only figures\nSave: diagrams/page_NNN_diagram_M.jpg]
     cropDiagrams --> buildPageMd[Build pages/page_NNN.md\nOCR text + markdown image\nreferences for each diagram]
 
     chkDiagrams -- No --> buildPageMdNoDiagram[Build pages/page_NNN.md\nOCR text only]
