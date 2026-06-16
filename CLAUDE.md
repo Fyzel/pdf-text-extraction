@@ -12,12 +12,13 @@ Full pipeline implemented and tested. `main.py` is the entry point. Core modules
 | `health.py` | Probe Ollama instances via `GET /api/tags` |
 | `state.py` | Thread-safe `state.json` read/write with atomic rename |
 | `render.py` | Phase 1 — PDF→JPEG via PyMuPDF, `ProcessPoolExecutor` |
-| `ocr.py` | Phase 2 — Ollama OCR, diagram crop, round-robin + retry; normalises per-page list markdown via `mdlint` before writing |
+| `ocr.py` | Phase 2 — Ollama OCR, diagram crop, round-robin + retry; normalises per-page list markdown via `mdlint` and replaces model tables with PDF-extracted tables via `tables` before writing |
 | `mdlint.py` | Phase 2 helper — normalise list markers, ordered numbering, and nested-item indentation in per-page markdown (CommonMark) |
+| `tables.py` | Phase 2 helper — extract tables from the PDF via PyMuPDF `find_tables`, render as aligned Markdown, splice over the model's table blocks |
 | `combine.py` | Phase 3 — merge per-page `.md` into single output file |
 | `cli.py` | Entry point, phases 1–3, exit codes 0–7 |
 
-Test suite: `tests/` — 147 tests across unit, integration, and e2e layers. Run with `pytest tests/`.
+Test suite: `tests/` — 162 tests across unit, integration, and e2e layers. Run with `pytest tests/`.
 
 Clean manual test-run output (generated `<stem>/` dirs and `<stem>.md` under `tests/data/`) with `bin/clean-test-data` — portable POSIX `sh` for Git Bash, Linux, and macOS.
 
