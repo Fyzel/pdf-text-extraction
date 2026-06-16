@@ -42,7 +42,7 @@ Liber definitiones vituperatoribus qui eu. Ad per utroque elaboraret honestatis?
 
 Vero nullam nec te, essent menandri ei nam. Mei integre alterum incorrupte an, has odio inciderint no, usu ad discere accommodare? Ex quem posse periculis pro, qui ludus aliquando no? Per ne vidit gloriatur, mazim suavitate tincidunt sed ex, ad ius feugiat ullamcorper intellegebat. Sea in dictas suscipit, eum ne convenire dignissim persecuti.
 
-![Diagram 1](diagrams/page_2_diagram_1.jpg)
+![Diagram 1](test-004--three-page-text-diagram/diagrams/page_2_diagram_1.jpg)
 
 --- PAGE 3 ---
 Ut choro detracto platonem quo, mei ei summo scripta. Ad vim liber tollit tantas, propriae inimicus sea no, his iusto saperet efficiendi ea? Sed ei solum gubergren sententiae. Deleniti disputationi te pri, et stet hinc esse vix. Vis id mutat verterem repudiare, ne has zril dolore. Purto illum id eos, per cu errem dicant libris! Nostrum lucilius ei pri.

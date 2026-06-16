@@ -16,7 +16,9 @@ Full pipeline implemented and tested. `main.py` is the entry point. Core modules
 | `combine.py` | Phase 3 — merge per-page `.md` into single output file |
 | `cli.py` | Entry point, phases 1–3, exit codes 0–7 |
 
-Test suite: `tests/` — 107 tests across unit, integration, and e2e layers. Run with `pytest tests/`.
+Test suite: `tests/` — 121 tests across unit, integration, and e2e layers. Run with `pytest tests/`.
+
+Clean manual test-run output (generated `<stem>/` dirs and `<stem>.md` under `tests/data/`) with `bin/clean-test-data` — portable POSIX `sh` for Git Bash, Linux, and macOS.
 
 Application dependencies in `requirements.txt`: PyMuPDF, pytest, pytest-mock, pylint, bandit, pre-commit, PyYAML.
 

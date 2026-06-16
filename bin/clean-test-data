@@ -1,0 +1,50 @@
+#!/usr/bin/env sh
+#
+# Remove manual test-run output under tests/data/.
+#
+# For each test fixture stem, deletes:
+#   - tests/data/<stem>/        (working dir: pages/, diagrams/, state.json)
+#   - tests/data/<stem>.md      (generated combined markdown)
+#
+# The source PDFs and the checked-in *-expected.md files are left untouched.
+#
+# Portable POSIX sh: runs on Windows 11 (Git Bash), Linux, and macOS.
+
+set -eu
+
+# Resolve repo root from this script's location (bin/ lives at repo root).
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+data_dir="$repo_root/tests/data"
+
+stems="
+test-001--one-page-text
+test-002--two-page-text
+test-003--three-page-text-diagram
+test-004--three-page-text-diagram
+"
+
+removed=0
+for stem in $stems; do
+    [ -n "$stem" ] || continue
+
+    dir="$data_dir/$stem"
+    if [ -d "$dir" ]; then
+        rm -rf -- "$dir"
+        echo "Removed dir:  $dir"
+        removed=$((removed + 1))
+    fi
+
+    md="$data_dir/$stem.md"
+    if [ -f "$md" ]; then
+        rm -f -- "$md"
+        echo "Removed file: $md"
+        removed=$((removed + 1))
+    fi
+done
+
+if [ "$removed" -eq 0 ]; then
+    echo "Nothing to clean."
+else
+    echo "Cleaned $removed item(s)."
+fi
