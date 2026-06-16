@@ -21,11 +21,11 @@ from pdf_extractor.config import (
 # ---------------------------------------------------------------------------
 
 def test_parse_basic(tmp_path):
-    data = {"instances": [{"url": "http://host:11434", "model": "qwen3-vl:8b"}]}
+    data = {"instances": [{"url": "http://host:11434", "model": "qwen2.5vl:7b"}]}
     cfg = _parse(data, cpu_count=4)
     assert len(cfg.instances) == 1
     assert cfg.instances[0].url == "http://host:11434"
-    assert cfg.instances[0].model == "qwen3-vl:8b"
+    assert cfg.instances[0].model == "qwen2.5vl:7b"
 
 
 def test_parse_instance_default_model(tmp_path):
@@ -46,7 +46,7 @@ def test_parse_empty_instances_raises():
 
 def test_parse_instance_missing_url_raises():
     with pytest.raises(ValueError, match="url"):
-        _parse({"instances": [{"model": "qwen3-vl:8b"}]}, cpu_count=4)
+        _parse({"instances": [{"model": "qwen2.5vl:7b"}]}, cpu_count=4)
 
 
 def test_parse_max_render_workers_absent_uses_cpu_count():
@@ -106,7 +106,7 @@ def test_parse_ocr_timeout_negative_raises():
 def test_parse_multiple_instances():
     data = {
         "instances": [
-            {"url": "http://a:11434", "model": "qwen3-vl:32b"},
+            {"url": "http://a:11434", "model": "qwen2.5vl:32b"},
             {"url": "http://b:11434"},
         ]
     }
@@ -120,7 +120,7 @@ def test_parse_multiple_instances():
 # ---------------------------------------------------------------------------
 
 def test_load_config_from_pdf_dir(tmp_path):
-    cfg_data = {"instances": [{"url": "http://pdf-dir:11434", "model": "qwen3-vl:8b"}]}
+    cfg_data = {"instances": [{"url": "http://pdf-dir:11434", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg_data), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"
     pdf.touch()
@@ -130,7 +130,7 @@ def test_load_config_from_pdf_dir(tmp_path):
 
 def test_load_config_from_cwd(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    cfg_data = {"instances": [{"url": "http://cwd:11434", "model": "qwen3-vl:8b"}]}
+    cfg_data = {"instances": [{"url": "http://cwd:11434", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg_data), encoding="utf-8")
     pdf = tmp_path / "subdir" / "doc.pdf"
     pdf.parent.mkdir()
