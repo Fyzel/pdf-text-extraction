@@ -14,6 +14,29 @@ def test_stray_alpha_marker_under_ordered_parent_becomes_numeric():
     assert normalize_markdown(src) == expected
 
 
+def test_under_indented_ordered_subitem_realigned_to_parent_content_column():
+    # Model emits a 2-space indent under "5. "; CommonMark needs 3 to nest.
+    src = "4. utroque\n5. perfecto vix\n  1. exerci ridens feugait duo ut"
+    expected = "1. utroque\n2. perfecto vix\n   1. exerci ridens feugait duo ut"
+    assert normalize_markdown(src) == expected
+
+
+def test_unordered_subitem_aligned_to_two_space_column():
+    src = "- perfecto vix\n    - exerci"
+    expected = "- perfecto vix\n  - exerci"
+    assert normalize_markdown(src) == expected
+
+
+def test_multidigit_parent_widens_child_indent():
+    src = (
+        "\n".join(f"{n}. item{n}" for n in range(1, 11))
+        + "\n  1. nested under ten"
+    )
+    lines = normalize_markdown(src).split("\n")
+    assert lines[9] == "10. item10"
+    assert lines[10] == "    1. nested under ten"  # 4-space indent under "10. "
+
+
 def test_roman_marker_under_ordered_parent_becomes_numeric():
     src = "1. alpha\n   i. beta\n   ii. gamma"
     expected = "1. alpha\n   1. beta\n   2. gamma"

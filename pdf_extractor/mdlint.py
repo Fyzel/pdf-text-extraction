@@ -11,6 +11,7 @@ The normaliser is deterministic and side-effect free; it touches only lines that
 parse as list items and leaves prose, tables, headings, and blank lines untouched.
 """
 import re
+from dataclasses import dataclass
 
 # A list item: optional indent, a bullet/ordered marker, whitespace, then content.
 # Ordered markers cover numeric (``1.`` / ``1)``), single-letter alphabetic
@@ -30,25 +31,47 @@ def _is_unordered(marker: str) -> bool:
     return marker in _UNORDERED
 
 
-def normalize_markdown(text: str) -> str:
-    """Normalise list markers and ordered-list numbering in markdown text.
+@dataclass
+class _Level:
+    """One open list level on the nesting stack.
 
-    Nesting is inferred from leading indentation. Within each list level,
-    unordered items are rewritten to ``-`` and ordered items (numeric,
-    alphabetic, or roman) are renumbered sequentially as ``1.``, ``2.``, …
-    The original indentation string is preserved, so a sub-item indented under
-    an ordered parent keeps its indent but gains a valid numeric marker.
+    Attributes:
+        raw_indent: Source indentation width, used only to detect nesting depth
+            relative to other items.
+        out_indent: Normalised indentation emitted for items at this level.
+        ordered: Whether this level is an ordered list.
+        counter: Running 1-based item number for ordered levels.
+        marker_len: Rendered width of the most recent marker at this level
+            (e.g. 2 for ``5.``), used to align any child level's indentation.
+    """
+
+    raw_indent: int
+    out_indent: str
+    ordered: bool
+    counter: int = 0
+    marker_len: int = 1
+
+
+def normalize_markdown(text: str) -> str:
+    """Normalise list markers, numbering, and nesting indentation in markdown.
+
+    Nesting depth is inferred from the *relative* leading indentation of items.
+    Within each level, unordered items are rewritten to ``-`` and ordered items
+    (numeric, alphabetic, or roman) are renumbered sequentially as ``1.``,
+    ``2.``, … Child levels are re-indented to align with the parent item's
+    content column (marker width plus one space), which is what CommonMark
+    requires for a sub-item to render as a nested list. This corrects both stray
+    markers (``A.`` under an ordered parent) and under-indented sub-items
+    (``  1.`` where three spaces are needed under ``5. ``).
 
     Args:
         text: Per-page markdown text from the OCR response.
 
     Returns:
-        Markdown with normalised list markers; non-list content is unchanged.
+        Markdown with normalised list markup; non-list content is unchanged.
     """
     out: list[str] = []
-    # Stack of open list levels, innermost last. Each entry: [indent_width,
-    # ordered(bool), counter].
-    stack: list[list] = []
+    stack: list[_Level] = []
 
     for line in text.split("\n"):
         match = _ITEM_RE.match(line)
@@ -60,27 +83,33 @@ def normalize_markdown(text: str) -> str:
             out.append(line)
             continue
 
-        indent: str = match.group("indent")
-        indent_w: int = len(indent.expandtabs(4))
+        raw_w: int = len(match.group("indent").expandtabs(4))
         marker: str = match.group("marker")
         content: str = match.group("content")
         ordered: bool = not _is_unordered(marker)
 
-        # Drop any deeper levels; a shallower-or-equal indent closes them.
-        while stack and stack[-1][0] > indent_w:
+        # Close any deeper levels; a shallower-or-equal indent ends them.
+        while stack and stack[-1].raw_indent > raw_w:
             stack.pop()
 
-        if stack and stack[-1][0] == indent_w:
+        if stack and stack[-1].raw_indent == raw_w:
             level = stack[-1]
-            if level[1] != ordered:  # marker type changed at this indent
-                level[1] = ordered
-                level[2] = 0
-            level[2] += 1
+            if level.ordered != ordered:  # marker type changed at this indent
+                level.ordered = ordered
+                level.counter = 0
+        elif stack and raw_w > stack[-1].raw_indent:
+            parent = stack[-1]
+            child_indent: str = parent.out_indent + " " * (parent.marker_len + 1)
+            level = _Level(raw_w, child_indent, ordered)
+            stack.append(level)
         else:
-            level = [indent_w, ordered, 1]
+            # First level, or an indented root item with no open parent.
+            level = _Level(raw_w, "", ordered)
             stack.append(level)
 
-        new_marker: str = f"{level[2]}." if ordered else "-"
-        out.append(f"{indent}{new_marker} {content}")
+        level.counter += 1
+        new_marker: str = f"{level.counter}." if ordered else "-"
+        level.marker_len = len(new_marker)
+        out.append(f"{level.out_indent}{new_marker} {content}")
 
     return "\n".join(out)
