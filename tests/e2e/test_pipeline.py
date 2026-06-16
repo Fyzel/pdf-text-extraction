@@ -12,6 +12,7 @@ import pytest
 from pdf_extractor.cli import run
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
+DATA = Path(__file__).parent.parent / "data"
 
 _NEXT_PORT = 19600
 
@@ -61,6 +62,14 @@ def _start_mock(port: int, ocr_fn=None) -> HTTPServer:
 def _copy_fixture(tmp_path: Path, name: str) -> Path:
     """Copy a fixture PDF into tmp_path so output lands there, not in fixtures/."""
     src = FIXTURES / name
+    dst = tmp_path / name
+    shutil.copy2(src, dst)
+    return dst
+
+
+def _copy_data(tmp_path: Path, name: str) -> Path:
+    """Copy a data PDF into tmp_path so output lands there, not in data/."""
+    src = DATA / name
     dst = tmp_path / name
     shutil.copy2(src, dst)
     return dst
@@ -251,3 +260,83 @@ def test_e2e_no_ollama(tmp_path, monkeypatch):
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     with patch.object(sys, "argv", ["main.py", str(FIXTURES / "simple.pdf")]):
         assert run() == 4
+
+
+# ---------------------------------------------------------------------------
+# tests/data — real PDFs
+# ---------------------------------------------------------------------------
+
+def test_e2e_data_001_one_page_text(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_data(tmp_path, "test-001--one-page-text.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "test-001--one-page-text.md").read_text(encoding="utf-8")
+        assert content.count("--- PAGE") == 1
+        assert "--- PAGE 1 ---" in content
+    finally:
+        server.shutdown()
+
+
+def test_e2e_data_002_two_page_text(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_data(tmp_path, "test-002--two-page-text.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "test-002--two-page-text.md").read_text(encoding="utf-8")
+        assert content.count("--- PAGE") == 2
+        assert content.index("--- PAGE 1 ---") < content.index("--- PAGE 2 ---")
+    finally:
+        server.shutdown()
+
+
+def test_e2e_data_003_three_page_text_diagram(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    bbox = {"x": 10, "y": 10, "width": 100, "height": 80}
+
+    def ocr_fn(_path):
+        return json.dumps({"text": "diagram page", "diagrams": [bbox]})
+
+    server = _start_mock(port, ocr_fn)
+    try:
+        pdf = _copy_data(tmp_path, "test-003--three-page-text-diagram.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "test-003--three-page-text-diagram.md").read_text(encoding="utf-8")
+        assert content.count("--- PAGE") == 3
+        assert "![Diagram 1]" in content
+        diag_dir = tmp_path / "test-003--three-page-text-diagram" / "diagrams"
+        assert diag_dir.is_dir()
+        assert len(list(diag_dir.glob("*.jpg"))) > 0
+    finally:
+        server.shutdown()
+
+
+def test_e2e_data_004_three_page_text_diagram(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    bbox = {"x": 10, "y": 10, "width": 100, "height": 80}
+
+    def ocr_fn(_path):
+        return json.dumps({"text": "diagram page", "diagrams": [bbox]})
+
+    server = _start_mock(port, ocr_fn)
+    try:
+        pdf = _copy_data(tmp_path, "test-004--three-page-text-diagram.pdf")
+        code = _run(tmp_path, pdf, port)
+        assert code == 0
+        content = (tmp_path / "test-004--three-page-text-diagram.md").read_text(encoding="utf-8")
+        assert content.count("--- PAGE") == 3
+        assert "![Diagram 1]" in content
+        diag_dir = tmp_path / "test-004--three-page-text-diagram" / "diagrams"
+        assert diag_dir.is_dir()
+        assert len(list(diag_dir.glob("*.jpg"))) > 0
+    finally:
+        server.shutdown()
