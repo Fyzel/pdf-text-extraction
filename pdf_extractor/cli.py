@@ -13,6 +13,18 @@ from pdf_extractor.render import _DPI_SCALE, get_page_count, render_pages
 from pdf_extractor.state import AppState, StateManager
 
 _USAGE: str = "Usage: python main.py <pdf_path> [--dpi-scale N]"
+_HELP: str = f"""\
+{_USAGE}
+
+Extract text and diagrams from a PDF via Ollama vision OCR.
+
+Arguments:
+  <pdf_path>      Path to the source PDF file.
+  --dpi-scale N   Page render scale factor (default 2.0, ~144 DPI). Higher
+                  values give sharper images and better OCR of small text at
+                  the cost of size and render time. Also accepts --dpi-scale=N.
+  -h, --help      Show this help message and exit.
+"""
 
 
 def _parse_args(argv: list[str]) -> tuple[str | None, float, str | None]:
@@ -76,6 +88,10 @@ def run() -> int:
         - ``6``: All rendered pages failed OCR.
         - ``7``: Combined output file write failed.
     """
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(_HELP)
+        return 0
+
     pdf_arg: str | None
     dpi_scale: float
     arg_err: str | None

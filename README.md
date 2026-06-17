@@ -85,7 +85,17 @@ Multiple instances are supported — pages are distributed across them concurren
 ## Usage
 
 ```sh
-python main.py /path/to/document.pdf
+python main.py /path/to/document.pdf [--dpi-scale N]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `<pdf_path>` | Yes | — | Path to the source PDF |
+| `--dpi-scale N` | No | `2.0` | Page render scale factor (`2.0` ≈ 144 DPI). Raise for sharper images and OCR of fine print, at the cost of larger images and slower rendering. Applies to both full-page renders and diagram crops. |
+
+```sh
+# render at ~288 DPI for clearer capture of dense or small text
+python main.py /path/to/document.pdf --dpi-scale 4
 ```
 
 Output is written alongside the PDF:
@@ -107,7 +117,7 @@ Re-running the same command resumes from where processing left off.
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Missing PDF path argument |
+| 1 | Missing PDF path, or invalid command-line arguments |
 | 2 | PDF file not found |
 | 3 | PDF file not readable |
 | 4 | No Ollama instances reachable |
