@@ -9,10 +9,13 @@ import fitz
 
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.ocr import (
+    _BLANK_PAGE_MARKER,
     _crop_diagram,
     _crop_pdf_region,
     _embedded_image_rects,
+    _is_blank_page,
     _ocr_page_with_retry,
+    _page_white_ratio,
     _parse_ocr_response,
     run_phase2,
 )
@@ -382,6 +385,85 @@ def test_ocr_timeout_passed_through(tmp_path):
         assert ok
     finally:
         server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Blank-page detection (issue #49)
+# ---------------------------------------------------------------------------
+
+def _make_white_jpeg(path: Path, w: int = 400, h: int = 300) -> None:
+    """Write a JPEG of a completely empty (white) page."""
+    doc = fitz.open()
+    doc.new_page(width=w, height=h)
+    pix = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2))
+    pix.save(str(path))
+    doc.close()
+
+
+def _make_blank_pdf(path: Path, pages: int = 1) -> None:
+    """Write a PDF with empty pages (no text, no drawings, no images)."""
+    doc = fitz.open()
+    for _ in range(pages):
+        doc.new_page(width=612, height=792)
+    doc.save(str(path))
+    doc.close()
+
+
+def test_page_white_ratio_all_white(tmp_path):
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _page_white_ratio(jpeg) >= 0.999
+
+
+def test_page_white_ratio_with_content(tmp_path):
+    jpeg = tmp_path / "content.jpg"
+    _make_jpeg(jpeg)  # has text and a black rectangle
+    assert _page_white_ratio(jpeg) < 0.999
+
+
+def test_is_blank_page_white_no_pdf(tmp_path):
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _is_blank_page(None, 1, jpeg) is True
+
+
+def test_is_blank_page_content_no_pdf(tmp_path):
+    jpeg = tmp_path / "content.jpg"
+    _make_jpeg(jpeg)
+    assert _is_blank_page(None, 1, jpeg) is False
+
+
+def test_is_blank_page_blank_pdf(tmp_path):
+    pdf = tmp_path / "blank.pdf"
+    _make_blank_pdf(pdf)
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _is_blank_page(pdf, 1, jpeg) is True
+
+
+def test_is_blank_page_text_pdf_not_blank(tmp_path):
+    pdf = tmp_path / "text.pdf"
+    _make_pdf_with_image(pdf)  # page has "page 1 text"
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)  # even a white render is not blank when the PDF has text
+    assert _is_blank_page(pdf, 1, jpeg) is False
+
+
+def test_ocr_skips_blank_page(tmp_path):
+    # Point at a port with no server: if OCR were attempted it would fail.
+    # A successful return therefore proves the Ollama call was skipped.
+    inst = OllamaInstance("http://127.0.0.1:19599", "m")
+    pdf = tmp_path / "blank.pdf"
+    _make_blank_pdf(pdf)
+    pages = tmp_path / "pages"; pages.mkdir()
+    _make_white_jpeg(pages / "page_1.jpg")
+    pn, ok, err, dcnt = _ocr_page_with_retry(
+        1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf
+    )
+    assert ok
+    assert err == ""
+    assert dcnt == 0
+    assert (pages / "page_1.md").read_text(encoding="utf-8") == _BLANK_PAGE_MARKER
 
 
 def test_run_phase2_updates_state(tmp_path):
