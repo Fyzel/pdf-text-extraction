@@ -13,6 +13,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 - Diagram extraction — figures cropped at their exact PDF image bounds and saved as image files
 - Table recognition — tables read directly from the PDF (PyMuPDF) and rendered as Markdown table syntax, not images
 - Markdown list normalisation — sub-bullets get valid CommonMark markers and indentation so nested lists render correctly
+- Blank-page skipping — empty pages are detected and skipped, avoiding a wasted OCR call
 - Parallel PDF rendering across all available CPU cores
 - Concurrent OCR across multiple Ollama instances
 - Resumable — interrupted runs continue from where they left off
@@ -133,7 +134,7 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-167 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked. A further 6 live tests are opt-in (see below).
+The test suite spans unit, integration, and end-to-end layers. No real Ollama instance is required — all HTTP calls are mocked. A separate set of live tests is opt-in (see below).
 
 To also run live tests against a real Ollama instance:
 

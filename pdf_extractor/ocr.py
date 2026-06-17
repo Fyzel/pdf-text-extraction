@@ -18,6 +18,11 @@ from pdf_extractor.state import AppState, StateManager
 _DEFAULT_OCR_TIMEOUT: int = 600  # fallback only; overridden by AppConfig.ocr_timeout
 _BBOX_TRIM_RATIO: float = 0.05  # trim 5% off right and bottom edges of model-returned bboxes
 
+# Blank-page detection (issue #49): skip the expensive OCR call on empty pages.
+_BLANK_PAGE_MARKER: str = "<!-- blank page -->"  # written to a blank page's per-page .md
+_WHITE_CHANNEL_MIN: int = 250  # a pixel counts as white when every channel is >= this (0–255)
+_BLANK_WHITE_RATIO: float = 0.999  # page is blank when this fraction of pixels are white
+
 _PROMPT: str = """\
 Analyze this document page image. Return ONLY a valid JSON object with this exact structure:
 
@@ -236,6 +241,80 @@ def _page_stem(page_num: int, page_count: int) -> str:
     return f"page_{page_num:0{width}d}"
 
 
+def _page_white_ratio(jpeg_path: Path) -> float:
+    """Return the fraction of near-white pixels in a rendered page JPEG.
+
+    The image is shrunk to a small thumbnail first so the per-pixel scan stays
+    cheap regardless of render DPI. A pixel is "white" when every colour channel
+    is at least ``_WHITE_CHANNEL_MIN``.
+
+    Args:
+        jpeg_path: Path to the rendered page JPEG.
+
+    Returns:
+        Ratio in ``[0.0, 1.0]`` of white pixels to total pixels. Returns ``0.0``
+        for a missing, corrupt, or empty image, so such pages are treated as
+        non-blank and still get a real OCR attempt.
+    """
+    try:
+        pix: fitz.Pixmap = fitz.Pixmap(str(jpeg_path))
+        # Halve the dimensions repeatedly until small; keeps the Python scan fast.
+        while pix.width > 200 or pix.height > 200:
+            pix.shrink(1)
+    except Exception:  # noqa: BLE001 — any decode failure means "treat as non-blank"
+        return 0.0
+
+    total: int = pix.width * pix.height
+    if total == 0:
+        return 0.0
+
+    data: bytes = pix.samples
+    stride: int = pix.n
+    # Count only colour channels; the alpha channel (if any) is not part of
+    # the visible colour, so n=2 (gray+alpha) checks 1 channel, n=4 (RGBA) 3.
+    channels: int = max(1, pix.n - pix.alpha)
+    white: int = 0
+    for i in range(0, len(data), stride):
+        if all(data[i + c] >= _WHITE_CHANNEL_MIN for c in range(channels)):
+            white += 1
+    return white / total
+
+
+def _is_blank_page(pdf_path: Path | None, page_num: int, jpeg_path: Path) -> bool:
+    """Decide whether a page is blank, to skip the expensive OCR call.
+
+    Hybrid check: when a source PDF is available, any extractable text or vector
+    drawing means the page is not blank (cheap, no pixel work). Otherwise — and
+    for the no-PDF case — the page is blank when its rendered image is
+    near-uniformly white, which also catches scanned/image-only blank pages.
+
+    A PDF that cannot be opened or paged is treated as "can't prove non-blank":
+    the inspection is skipped and the decision falls through to the whiteness
+    heuristic rather than aborting OCR for the page.
+
+    Args:
+        pdf_path: Source PDF, or ``None`` when unavailable.
+        page_num: 1-based page number.
+        jpeg_path: Rendered page JPEG, used for the whiteness fallback.
+
+    Returns:
+        ``True`` when the page should be treated as blank.
+    """
+    if pdf_path is not None:
+        try:
+            doc: fitz.Document = fitz.open(str(pdf_path))
+            try:
+                page: fitz.Page = doc[page_num - 1]
+                if page.get_text().strip() or page.get_drawings():
+                    return False
+            finally:
+                doc.close()
+        except Exception:  # noqa: BLE001 — can't inspect PDF; fall back to whiteness
+            pass  # fall through to the pixel-whiteness check
+
+    return _page_white_ratio(jpeg_path) >= _BLANK_WHITE_RATIO
+
+
 def _ocr_page_with_retry(
     page_num: int,
     instances_ordered: list[OllamaInstance],
@@ -251,6 +330,10 @@ def _ocr_page_with_retry(
     On success, writes the per-page markdown file and any cropped diagram images.
     Round-robin is achieved by the caller rotating ``instances_ordered`` based on
     page number before calling this function.
+
+    Blank pages (see ``_is_blank_page``) are detected up front and short-circuit
+    the whole instance loop: a marker file is written and the function returns
+    success without any Ollama call.
 
     Diagram cropping prefers the PDF's embedded image rects (exact bounds) when
     ``pdf_path`` is supplied and the page embeds raster images; it falls back to
@@ -277,6 +360,13 @@ def _ocr_page_with_retry(
     jpeg_path: Path = pages_dir / f"{stem}.jpg"
     md_path: Path = pages_dir / f"{stem}.md"
     last_error: str = "no instances available"
+
+    # Skip blank pages entirely — no Ollama call. Write a marker so the page
+    # still appears (empty) in the combined output and is recorded as done.
+    if _is_blank_page(pdf_path, page_num, jpeg_path):
+        print(f"  Page {page_num}: blank — skipped OCR")
+        md_path.write_text(_BLANK_PAGE_MARKER, encoding="utf-8")
+        return page_num, True, "", 0
 
     for instance in instances_ordered:
         try:
