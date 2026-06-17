@@ -4,7 +4,7 @@ from pathlib import Path
 
 import fitz
 
-_DPI_SCALE: float = 2.0  # 144 DPI — sufficient resolution for qwen2.5vl OCR
+_DPI_SCALE: float = 2.0  # default render scale (2.0 = 144 DPI); override via --dpi-scale
 
 
 def _page_filename(page_num: int, page_count: int) -> str:
@@ -21,24 +21,27 @@ def _page_filename(page_num: int, page_count: int) -> str:
     return f"page_{page_num:0{width}d}.jpg"
 
 
-def _render_page_worker(args: tuple[str, str, int, int]) -> tuple[int, bool, str]:
+def _render_page_worker(args: tuple[str, str, int, int, float]) -> tuple[int, bool, str]:
     """Render one PDF page to JPEG.
 
     Top-level function required for ``ProcessPoolExecutor`` pickling on Windows.
+    ``dpi_scale`` is passed in the args tuple rather than read from the module
+    global, since worker processes spawned on Windows re-import this module and
+    would otherwise see the default rather than a caller-supplied value.
 
     Args:
-        args: Tuple of ``(pdf_path, pages_dir, page_num, page_count)``.
+        args: Tuple of ``(pdf_path, pages_dir, page_num, page_count, dpi_scale)``.
 
     Returns:
         Tuple of ``(page_num, success, error_message)``.
         ``error_message`` is an empty string on success.
     """
-    pdf_path_str, pages_dir_str, page_num, page_count = args
+    pdf_path_str, pages_dir_str, page_num, page_count, dpi_scale = args
     output_path: Path = Path(pages_dir_str) / _page_filename(page_num, page_count)
     try:
         doc: fitz.Document = fitz.open(pdf_path_str)
         page: fitz.Page = doc[page_num - 1]
-        mat: fitz.Matrix = fitz.Matrix(_DPI_SCALE, _DPI_SCALE)
+        mat: fitz.Matrix = fitz.Matrix(dpi_scale, dpi_scale)
         pix: fitz.Pixmap = page.get_pixmap(matrix=mat)
         pix.save(str(output_path))
         doc.close()
@@ -53,6 +56,7 @@ def render_pages(
     page_count: int,
     pending: list[int],
     max_workers: int,
+    dpi_scale: float = _DPI_SCALE,
 ) -> list[tuple[int, bool, str]]:
     """Render a subset of PDF pages to JPEG using a process pool.
 
@@ -66,6 +70,8 @@ def render_pages(
         pending: 1-based page numbers to render (pages already done are excluded
             by the caller before calling this function).
         max_workers: Maximum number of parallel render processes.
+        dpi_scale: Render scale factor (2.0 = 144 DPI). Higher values yield
+            sharper page images at the cost of size and render time.
 
     Returns:
         List of ``(page_num, success, error_message)`` tuples, one per page in
@@ -73,8 +79,8 @@ def render_pages(
     """
     pages_dir.mkdir(parents=True, exist_ok=True)
 
-    args_list: list[tuple[str, str, int, int]] = [
-        (str(pdf_path), str(pages_dir), page_num, page_count)
+    args_list: list[tuple[str, str, int, int, float]] = [
+        (str(pdf_path), str(pages_dir), page_num, page_count, dpi_scale)
         for page_num in pending
     ]
 
