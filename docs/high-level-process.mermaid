@@ -72,9 +72,9 @@ flowchart TD
     ocrOk -- Yes --> chkDiagrams{Response flags\na diagram on\nthe page?}
 
     chkDiagrams -- Yes --> cropDiagrams[For each embedded image rect M on page N\nCrop exact rect from the PDF page\nFallback to model bbox for vector-only figures\nSave: diagrams/page_NNN_diagram_M.jpg]
-    cropDiagrams --> buildPageMd[Build pages/page_NNN.md\nOCR text + markdown image\nreferences for each diagram]
+    cropDiagrams --> buildPageMd[Build pages/page_NNN.md\nOCR text + markdown image\nreferences for each diagram\n+ Comments section if --include-comments]
 
-    chkDiagrams -- No --> buildPageMdNoDiagram[Build pages/page_NNN.md\nOCR text only]
+    chkDiagrams -- No --> buildPageMdNoDiagram[Build pages/page_NNN.md\nOCR text only\n+ Comments section if --include-comments]
 
     buildPageMd --> savePageMd[Save pages/page_NNN.md]
     buildPageMdNoDiagram --> savePageMd
