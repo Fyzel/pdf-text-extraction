@@ -9,6 +9,7 @@ from typing import Any
 
 import fitz
 
+from pdf_extractor.annotations import extract_comments_markdown
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.mdlint import normalize_markdown
 from pdf_extractor.render import _DPI_SCALE
@@ -17,6 +18,11 @@ from pdf_extractor.state import AppState, StateManager
 
 _DEFAULT_OCR_TIMEOUT: int = 600  # fallback only; overridden by AppConfig.ocr_timeout
 _BBOX_TRIM_RATIO: float = 0.05  # trim 5% off right and bottom edges of model-returned bboxes
+
+# Blank-page detection (issue #49): skip the expensive OCR call on empty pages.
+_BLANK_PAGE_MARKER: str = "<!-- blank page -->"  # written to a blank page's per-page .md
+_WHITE_CHANNEL_MIN: int = 250  # a pixel counts as white when every channel is >= this (0–255)
+_BLANK_WHITE_RATIO: float = 0.999  # page is blank when this fraction of pixels are white
 
 _PROMPT: str = """\
 Analyze this document page image. Return ONLY a valid JSON object with this exact structure:
@@ -197,6 +203,7 @@ def _crop_pdf_region(
     page_num: int,
     rect: fitz.Rect,
     output_path: Path,
+    dpi_scale: float = _DPI_SCALE,
 ) -> None:
     """Render a page-coordinate rectangle from the PDF directly to a JPEG.
 
@@ -208,12 +215,13 @@ def _crop_pdf_region(
         page_num: 1-based page number.
         rect: Region to crop, in page points.
         output_path: Destination path for the cropped JPEG.
+        dpi_scale: Render scale factor; should match the Phase 1 page render.
     """
     doc: fitz.Document = fitz.open(str(pdf_path))
     try:
         page: fitz.Page = doc[page_num - 1]
         pix: fitz.Pixmap = page.get_pixmap(
-            matrix=fitz.Matrix(_DPI_SCALE, _DPI_SCALE), clip=rect
+            matrix=fitz.Matrix(dpi_scale, dpi_scale), clip=rect
         )
         pix.save(str(output_path))
     finally:
@@ -234,6 +242,80 @@ def _page_stem(page_num: int, page_count: int) -> str:
     return f"page_{page_num:0{width}d}"
 
 
+def _page_white_ratio(jpeg_path: Path) -> float:
+    """Return the fraction of near-white pixels in a rendered page JPEG.
+
+    The image is shrunk to a small thumbnail first so the per-pixel scan stays
+    cheap regardless of render DPI. A pixel is "white" when every colour channel
+    is at least ``_WHITE_CHANNEL_MIN``.
+
+    Args:
+        jpeg_path: Path to the rendered page JPEG.
+
+    Returns:
+        Ratio in ``[0.0, 1.0]`` of white pixels to total pixels. Returns ``0.0``
+        for a missing, corrupt, or empty image, so such pages are treated as
+        non-blank and still get a real OCR attempt.
+    """
+    try:
+        pix: fitz.Pixmap = fitz.Pixmap(str(jpeg_path))
+        # Halve the dimensions repeatedly until small; keeps the Python scan fast.
+        while pix.width > 200 or pix.height > 200:
+            pix.shrink(1)
+    except Exception:  # noqa: BLE001 — any decode failure means "treat as non-blank"
+        return 0.0
+
+    total: int = pix.width * pix.height
+    if total == 0:
+        return 0.0
+
+    data: bytes = pix.samples
+    stride: int = pix.n
+    # Count only colour channels; the alpha channel (if any) is not part of
+    # the visible colour, so n=2 (gray+alpha) checks 1 channel, n=4 (RGBA) 3.
+    channels: int = max(1, pix.n - pix.alpha)
+    white: int = 0
+    for i in range(0, len(data), stride):
+        if all(data[i + c] >= _WHITE_CHANNEL_MIN for c in range(channels)):
+            white += 1
+    return white / total
+
+
+def _is_blank_page(pdf_path: Path | None, page_num: int, jpeg_path: Path) -> bool:
+    """Decide whether a page is blank, to skip the expensive OCR call.
+
+    Hybrid check: when a source PDF is available, any extractable text or vector
+    drawing means the page is not blank (cheap, no pixel work). Otherwise — and
+    for the no-PDF case — the page is blank when its rendered image is
+    near-uniformly white, which also catches scanned/image-only blank pages.
+
+    A PDF that cannot be opened or paged is treated as "can't prove non-blank":
+    the inspection is skipped and the decision falls through to the whiteness
+    heuristic rather than aborting OCR for the page.
+
+    Args:
+        pdf_path: Source PDF, or ``None`` when unavailable.
+        page_num: 1-based page number.
+        jpeg_path: Rendered page JPEG, used for the whiteness fallback.
+
+    Returns:
+        ``True`` when the page should be treated as blank.
+    """
+    if pdf_path is not None:
+        try:
+            doc: fitz.Document = fitz.open(str(pdf_path))
+            try:
+                page: fitz.Page = doc[page_num - 1]
+                if page.get_text().strip() or page.get_drawings():
+                    return False
+            finally:
+                doc.close()
+        except Exception:  # noqa: BLE001 — can't inspect PDF; fall back to whiteness
+            pass  # fall through to the pixel-whiteness check
+
+    return _page_white_ratio(jpeg_path) >= _BLANK_WHITE_RATIO
+
+
 def _ocr_page_with_retry(
     page_num: int,
     instances_ordered: list[OllamaInstance],
@@ -242,12 +324,18 @@ def _ocr_page_with_retry(
     page_count: int,
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
     pdf_path: Path | None = None,
+    dpi_scale: float = _DPI_SCALE,
+    include_comments: bool = False,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
     On success, writes the per-page markdown file and any cropped diagram images.
     Round-robin is achieved by the caller rotating ``instances_ordered`` based on
     page number before calling this function.
+
+    Blank pages (see ``_is_blank_page``) are detected up front and short-circuit
+    the whole instance loop: a marker file is written and the function returns
+    success without any Ollama call.
 
     Diagram cropping prefers the PDF's embedded image rects (exact bounds) when
     ``pdf_path`` is supplied and the page embeds raster images; it falls back to
@@ -264,6 +352,9 @@ def _ocr_page_with_retry(
         ocr_timeout: Per-request HTTP timeout in seconds.
         pdf_path: Source PDF, used for exact embedded-image crops. When ``None``,
             diagrams are cropped from the rendered JPEG using model bboxes.
+        dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
+        include_comments: When ``True`` and a source PDF is available, append the
+            page's text-bearing annotations as a ``## Comments`` section.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -273,6 +364,23 @@ def _ocr_page_with_retry(
     jpeg_path: Path = pages_dir / f"{stem}.jpg"
     md_path: Path = pages_dir / f"{stem}.md"
     last_error: str = "no instances available"
+
+    # Skip blank pages entirely — no Ollama call. Write a marker so the page
+    # still appears (empty) in the combined output and is recorded as done.
+    # A blank page may still carry comment annotations (e.g. a lone sticky note),
+    # which are not in the rendered image, so preserve them when requested.
+    if _is_blank_page(pdf_path, page_num, jpeg_path):
+        print(f"  Page {page_num}: blank — skipped OCR")
+        comments_md: str = (
+            extract_comments_markdown(str(pdf_path), page_num)
+            if include_comments and pdf_path is not None
+            else ""
+        )
+        body: str = _BLANK_PAGE_MARKER
+        if comments_md:
+            body = f"{_BLANK_PAGE_MARKER}\n\n{comments_md}"
+        md_path.write_text(body, encoding="utf-8")
+        return page_num, True, "", 0
 
     for instance in instances_ordered:
         try:
@@ -309,7 +417,7 @@ def _ocr_page_with_retry(
                     diag_filename: str = f"{stem}_diagram_{idx}.jpg"
                     diag_path: Path = diagrams_dir / diag_filename
                     diagrams_dir.mkdir(parents=True, exist_ok=True)
-                    _crop_pdf_region(pdf_path, page_num, rect, diag_path)
+                    _crop_pdf_region(pdf_path, page_num, rect, diag_path, dpi_scale)
                     diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
                     cropped_count += 1
                 except Exception as exc:  # noqa: BLE001
@@ -338,6 +446,10 @@ def _ocr_page_with_retry(
         parts: list[str] = [page_text]
         if diagram_refs:
             parts += ["", *diagram_refs]
+        if include_comments and pdf_path is not None:
+            comments_md = extract_comments_markdown(str(pdf_path), page_num)
+            if comments_md:
+                parts += ["", comments_md]
         md_path.write_text("\n".join(parts), encoding="utf-8")
 
         return page_num, True, "", cropped_count
@@ -354,6 +466,8 @@ def run_phase2(
     state_mgr: StateManager,
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
     pdf_path: Path | None = None,
+    dpi_scale: float = _DPI_SCALE,
+    include_comments: bool = False,
 ) -> None:
     """Run Phase 2 OCR concurrently across all available Ollama instances.
 
@@ -370,6 +484,9 @@ def run_phase2(
         state_mgr: StateManager for serialised, atomic state writes.
         ocr_timeout: Per-request HTTP timeout in seconds passed to each worker.
         pdf_path: Source PDF, forwarded to workers for exact embedded-image crops.
+        dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
+        include_comments: When ``True``, append PDF annotations as a comments
+            section to each page; forwarded to every worker.
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
@@ -377,10 +494,13 @@ def run_phase2(
 
     def _args(
         page_num: int,
-    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None]:
+    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None, float, bool]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
-        return page_num, ordered, pages_dir, diagrams_dir, page_count, ocr_timeout, pdf_path
+        return (
+            page_num, ordered, pages_dir, diagrams_dir, page_count,
+            ocr_timeout, pdf_path, dpi_scale, include_comments,
+        )
 
     with ThreadPoolExecutor(max_workers=n) as executor:
         futures = {

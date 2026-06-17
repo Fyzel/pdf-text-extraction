@@ -34,7 +34,7 @@ def test_page_filename_ten_pages():
 def test_render_page_worker_success(tmp_path):
     fixtures = Path(__file__).parent.parent / "fixtures"
     pdf = fixtures / "simple.pdf"
-    args = (str(pdf), str(tmp_path), 1, 1)
+    args = (str(pdf), str(tmp_path), 1, 1, 2.0)
     page_num, success, error = _render_page_worker(args)
     assert page_num == 1
     assert success
@@ -43,7 +43,7 @@ def test_render_page_worker_success(tmp_path):
 
 
 def test_render_page_worker_bad_pdf(tmp_path):
-    args = (str(tmp_path / "nonexistent.pdf"), str(tmp_path), 1, 1)
+    args = (str(tmp_path / "nonexistent.pdf"), str(tmp_path), 1, 1, 2.0)
     page_num, success, error = _render_page_worker(args)
     assert page_num == 1
     assert not success
@@ -53,10 +53,23 @@ def test_render_page_worker_bad_pdf(tmp_path):
 def test_render_page_worker_corrupt_pdf(tmp_path):
     fixtures = Path(__file__).parent.parent / "fixtures"
     corrupt = fixtures / "corrupt.pdf"
-    args = (str(corrupt), str(tmp_path), 1, 1)
+    args = (str(corrupt), str(tmp_path), 1, 1, 2.0)
     _, success, error = _render_page_worker(args)
     assert not success
     assert error != ""
+
+
+def test_render_page_worker_dpi_scale_affects_size(tmp_path):
+    import fitz
+    fixtures = Path(__file__).parent.parent / "fixtures"
+    pdf = fixtures / "simple.pdf"
+    lo = tmp_path / "lo"; lo.mkdir()
+    hi = tmp_path / "hi"; hi.mkdir()
+    _render_page_worker((str(pdf), str(lo), 1, 1, 1.0))
+    _render_page_worker((str(pdf), str(hi), 1, 1, 4.0))
+    w_lo = fitz.Pixmap(str(lo / "page_1.jpg")).width
+    w_hi = fitz.Pixmap(str(hi / "page_1.jpg")).width
+    assert w_hi == w_lo * 4
 
 
 # ---------------------------------------------------------------------------

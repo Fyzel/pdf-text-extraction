@@ -9,10 +9,13 @@ import fitz
 
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.ocr import (
+    _BLANK_PAGE_MARKER,
     _crop_diagram,
     _crop_pdf_region,
     _embedded_image_rects,
+    _is_blank_page,
     _ocr_page_with_retry,
+    _page_white_ratio,
     _parse_ocr_response,
     run_phase2,
 )
@@ -380,6 +383,159 @@ def test_ocr_timeout_passed_through(tmp_path):
         _make_jpeg(pages / "page_1.jpg")
         pn, ok, err, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1, ocr_timeout=30)
         assert ok
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Blank-page detection (issue #49)
+# ---------------------------------------------------------------------------
+
+def _make_white_jpeg(path: Path, w: int = 400, h: int = 300) -> None:
+    """Write a JPEG of a completely empty (white) page."""
+    doc = fitz.open()
+    doc.new_page(width=w, height=h)
+    pix = doc[0].get_pixmap(matrix=fitz.Matrix(2, 2))
+    pix.save(str(path))
+    doc.close()
+
+
+def _make_blank_pdf(path: Path, pages: int = 1) -> None:
+    """Write a PDF with empty pages (no text, no drawings, no images)."""
+    doc = fitz.open()
+    for _ in range(pages):
+        doc.new_page(width=612, height=792)
+    doc.save(str(path))
+    doc.close()
+
+
+def test_page_white_ratio_all_white(tmp_path):
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _page_white_ratio(jpeg) >= 0.999
+
+
+def test_page_white_ratio_with_content(tmp_path):
+    jpeg = tmp_path / "content.jpg"
+    _make_jpeg(jpeg)  # has text and a black rectangle
+    assert _page_white_ratio(jpeg) < 0.999
+
+
+def test_is_blank_page_white_no_pdf(tmp_path):
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _is_blank_page(None, 1, jpeg) is True
+
+
+def test_is_blank_page_content_no_pdf(tmp_path):
+    jpeg = tmp_path / "content.jpg"
+    _make_jpeg(jpeg)
+    assert _is_blank_page(None, 1, jpeg) is False
+
+
+def test_is_blank_page_blank_pdf(tmp_path):
+    pdf = tmp_path / "blank.pdf"
+    _make_blank_pdf(pdf)
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _is_blank_page(pdf, 1, jpeg) is True
+
+
+def test_is_blank_page_text_pdf_not_blank(tmp_path):
+    pdf = tmp_path / "text.pdf"
+    _make_pdf_with_image(pdf)  # page has "page 1 text"
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)  # even a white render is not blank when the PDF has text
+    assert _is_blank_page(pdf, 1, jpeg) is False
+
+
+def test_page_white_ratio_missing_file_returns_zero(tmp_path):
+    # Unreadable image must not raise — returns 0.0 so the page is treated as non-blank.
+    assert _page_white_ratio(tmp_path / "does_not_exist.jpg") == 0.0
+
+
+def test_is_blank_page_unreadable_pdf_falls_back_to_whiteness(tmp_path):
+    # A corrupt PDF must not abort the precheck; it falls through to the pixel check.
+    bad_pdf = tmp_path / "corrupt.pdf"
+    bad_pdf.write_bytes(b"not a real pdf \x00\x01")
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _is_blank_page(bad_pdf, 1, jpeg) is True
+
+
+def test_is_blank_page_out_of_range_page_falls_back(tmp_path):
+    pdf = tmp_path / "blank.pdf"
+    _make_blank_pdf(pdf, pages=1)
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    # page_num beyond the document must not raise.
+    assert _is_blank_page(pdf, 99, jpeg) is True
+
+
+def test_ocr_skips_blank_page(tmp_path):
+    # Point at a port with no server: if OCR were attempted it would fail.
+    # A successful return therefore proves the Ollama call was skipped.
+    inst = OllamaInstance("http://127.0.0.1:19599", "m")
+    pdf = tmp_path / "blank.pdf"
+    _make_blank_pdf(pdf)
+    pages = tmp_path / "pages"; pages.mkdir()
+    _make_white_jpeg(pages / "page_1.jpg")
+    pn, ok, err, dcnt = _ocr_page_with_retry(
+        1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf
+    )
+    assert ok
+    assert err == ""
+    assert dcnt == 0
+    assert (pages / "page_1.md").read_text(encoding="utf-8") == _BLANK_PAGE_MARKER
+
+
+def _make_pdf_with_comment(path: Path) -> None:
+    """One-page PDF with body text and a sticky-note annotation."""
+    doc = fitz.open()
+    page = doc.new_page(width=300, height=300)
+    page.insert_text((50, 50), "page body text")
+    note = page.add_text_annot((120, 120), "reviewer sticky note")
+    note.set_info(title="Reviewer")
+    note.update()
+    doc.save(str(path))
+    doc.close()
+
+
+def test_ocr_appends_comments_when_enabled(tmp_path):
+    body = {"text": "page body", "diagrams": []}
+    server = _start_mock_server(19515, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19515", "m")
+        pdf = tmp_path / "commented.pdf"
+        _make_pdf_with_comment(pdf)
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        _, ok, _, _ = _ocr_page_with_retry(
+            1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf, include_comments=True
+        )
+        assert ok
+        md = (pages / "page_1.md").read_text(encoding="utf-8")
+        assert "## Comments" in md
+        assert "reviewer sticky note" in md
+    finally:
+        server.shutdown()
+
+
+def test_ocr_omits_comments_by_default(tmp_path):
+    body = {"text": "page body", "diagrams": []}
+    server = _start_mock_server(19516, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19516", "m")
+        pdf = tmp_path / "commented.pdf"
+        _make_pdf_with_comment(pdf)
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        _, ok, _, _ = _ocr_page_with_retry(
+            1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf
+        )
+        assert ok
+        md = (pages / "page_1.md").read_text(encoding="utf-8")
+        assert "## Comments" not in md
     finally:
         server.shutdown()
 

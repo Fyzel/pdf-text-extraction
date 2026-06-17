@@ -13,6 +13,8 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 - Diagram extraction — figures cropped at their exact PDF image bounds and saved as image files
 - Table recognition — tables read directly from the PDF (PyMuPDF) and rendered as Markdown table syntax, not images
 - Markdown list normalisation — sub-bullets get valid CommonMark markers and indentation so nested lists render correctly
+- Blank-page skipping — empty pages are detected and skipped, avoiding a wasted OCR call
+- PDF comments — optionally extract annotation text (sticky notes, highlight notes) into a per-page Comments section (`--include-comments`)
 - Parallel PDF rendering across all available CPU cores
 - Concurrent OCR across multiple Ollama instances
 - Resumable — interrupted runs continue from where they left off
@@ -85,7 +87,21 @@ Multiple instances are supported — pages are distributed across them concurren
 ## Usage
 
 ```sh
-python main.py /path/to/document.pdf
+python main.py /path/to/document.pdf [--dpi-scale N] [--include-comments]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `<pdf_path>` | Yes | — | Path to the source PDF |
+| `--dpi-scale N` | No | `2.0` | Page render scale factor (`2.0` ≈ 144 DPI). Raise for sharper images and OCR of fine print, at the cost of larger images and slower rendering. Applies to both full-page renders and diagram crops. |
+| `--include-comments` | No | off | Append PDF comment annotations (sticky notes, highlight/underline notes, FreeText) to each page as a `## Comments` section. Excluded by default. |
+
+```sh
+# render at ~288 DPI for clearer capture of dense or small text
+python main.py /path/to/document.pdf --dpi-scale 4
+
+# include reviewer comments from the PDF in the Markdown output
+python main.py /path/to/document.pdf --include-comments
 ```
 
 Output is written alongside the PDF:
@@ -107,7 +123,7 @@ Re-running the same command resumes from where processing left off.
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Missing PDF path argument |
+| 1 | Missing PDF path, or invalid command-line arguments |
 | 2 | PDF file not found |
 | 3 | PDF file not readable |
 | 4 | No Ollama instances reachable |
@@ -123,7 +139,7 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-162 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
+The test suite spans unit, integration, and end-to-end layers. No real Ollama instance is required — all HTTP calls are mocked. A separate set of live tests is opt-in (see below).
 
 To also run live tests against a real Ollama instance:
 
@@ -144,6 +160,10 @@ bin/clean-test-data
 Portable POSIX `sh` — works under Git Bash (Windows), Linux, and macOS. Source PDFs and checked-in `*-expected.md` fixtures are left untouched.
 
 See the [Testing wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Testing) for details.
+
+## Contributing
+
+Pull requests are reviewed by the code owners listed in [`.github/CODEOWNERS`](.github/CODEOWNERS). GitHub automatically requests their review on any PR that touches owned paths, so the relevant owner is added as a reviewer for you.
 
 ## Documentation
 

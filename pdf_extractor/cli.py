@@ -9,21 +9,85 @@ from pdf_extractor.combine import run_phase3
 from pdf_extractor.config import AppConfig, OllamaInstance, load_config
 from pdf_extractor.health import probe_instances
 from pdf_extractor.ocr import run_phase2
-from pdf_extractor.render import get_page_count, render_pages
+from pdf_extractor.render import _DPI_SCALE, get_page_count, render_pages
 from pdf_extractor.state import AppState, StateManager
+
+_USAGE: str = "Usage: python main.py <pdf_path> [--dpi-scale N] [--include-comments]"
+_HELP: str = f"""\
+{_USAGE}
+
+Extract text and diagrams from a PDF via Ollama vision OCR.
+
+Arguments:
+  <pdf_path>          Path to the source PDF file.
+  --dpi-scale N       Page render scale factor (default 2.0, ~144 DPI). Higher
+                      values give sharper images and better OCR of small text at
+                      the cost of size and render time. Also accepts --dpi-scale=N.
+  --include-comments  Append PDF comment annotations (sticky notes, highlight
+                      notes, etc.) to each page as a "## Comments" section.
+  -h, --help          Show this help message and exit.
+"""
+
+
+def _parse_args(argv: list[str]) -> tuple[str | None, float, bool, str | None]:
+    """Parse CLI arguments into a PDF path, render scale, and comment flag.
+
+    Accepts one positional PDF path, an optional ``--dpi-scale N`` (or
+    ``--dpi-scale=N``) flag controlling the Phase 1 render resolution, and an
+    optional ``--include-comments`` flag.
+
+    Args:
+        argv: Argument list excluding the program name (``sys.argv[1:]``).
+
+    Returns:
+        Tuple of ``(pdf_path, dpi_scale, include_comments, error)``. On success
+        ``error`` is ``None``; on a parse error ``pdf_path`` is ``None`` and
+        ``error`` holds a message. ``dpi_scale`` defaults to the module default
+        when absent.
+    """
+    pdf_path: str | None = None
+    dpi_scale: float = _DPI_SCALE
+    include_comments: bool = False
+    i: int = 0
+    while i < len(argv):
+        arg: str = argv[i]
+        if arg == "--dpi-scale" or arg.startswith("--dpi-scale="):
+            if "=" in arg:
+                raw: str = arg.split("=", 1)[1]
+            else:
+                i += 1
+                if i >= len(argv):
+                    return None, dpi_scale, include_comments, "--dpi-scale requires a value"
+                raw = argv[i]
+            try:
+                dpi_scale = float(raw)
+            except ValueError:
+                return None, dpi_scale, include_comments, f"invalid --dpi-scale value: {raw}"
+            if dpi_scale <= 0:
+                return None, dpi_scale, include_comments, "--dpi-scale must be a positive number"
+        elif arg == "--include-comments":
+            include_comments = True
+        elif pdf_path is None:
+            pdf_path = arg
+        else:
+            return None, dpi_scale, include_comments, f"unexpected argument: {arg}"
+        i += 1
+
+    return pdf_path, dpi_scale, include_comments, None
 
 
 def run() -> int:
     """Validate arguments, load config, probe Ollama instances, and run Phase 1.
 
-    Reads ``sys.argv[1]`` as the PDF path. Performs all startup checks before
-    any processing begins, then renders all PDF pages to JPEG.
+    Reads the PDF path and optional ``--dpi-scale N`` flag from ``sys.argv``.
+    Performs all startup checks before any processing begins, then renders all
+    PDF pages to JPEG.
 
     Returns:
         Exit code indicating outcome:
 
         - ``0``: Phase 1 succeeded (or run was already complete).
-        - ``1``: No PDF path argument supplied.
+        - ``1``: No PDF path supplied, or invalid command-line arguments.
         - ``2``: PDF file not found.
         - ``3``: PDF file exists but is not readable or cannot be opened.
         - ``4``: ollama.json is invalid, or no Ollama instances are reachable.
@@ -31,11 +95,23 @@ def run() -> int:
         - ``6``: All rendered pages failed OCR.
         - ``7``: Combined output file write failed.
     """
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <pdf_path>", file=sys.stderr)
+    if any(a in ("-h", "--help") for a in sys.argv[1:]):
+        print(_HELP)
+        return 0
+
+    pdf_arg: str | None
+    dpi_scale: float
+    include_comments: bool
+    arg_err: str | None
+    pdf_arg, dpi_scale, include_comments, arg_err = _parse_args(sys.argv[1:])
+    if arg_err is not None:
+        print(f"Error: {arg_err}\n{_USAGE}", file=sys.stderr)
+        return 1
+    if pdf_arg is None:
+        print(_USAGE, file=sys.stderr)
         return 1
 
-    pdf_path: Path = Path(sys.argv[1])
+    pdf_path: Path = Path(pdf_arg)
 
     if not pdf_path.exists():
         print(f"Error: file not found: {pdf_path}", file=sys.stderr)
@@ -52,6 +128,8 @@ def run() -> int:
         return 4
 
     print(f"Render workers: {config.max_render_workers}")
+    print(f"DPI scale: {dpi_scale}")
+    print(f"Include comments: {include_comments}")
     print(f"Probing {len(config.instances)} Ollama instance(s)...")
 
     live: list[OllamaInstance] = probe_instances(config.instances)
@@ -101,7 +179,8 @@ def run() -> int:
             f"with {config.max_render_workers} worker(s)..."
         )
         results: list[tuple[int, bool, str]] = render_pages(
-            pdf_path, pages_dir, page_count, pending, config.max_render_workers
+            pdf_path, pages_dir, page_count, pending, config.max_render_workers,
+            dpi_scale,
         )
         for page_num, success, error in results:
             if success:
@@ -135,7 +214,8 @@ def run() -> int:
         )
         run_phase2(
             output_dir, page_count, ocr_pending, config.instances,
-            state, state_mgr, config.ocr_timeout, pdf_path,
+            state, state_mgr, config.ocr_timeout, pdf_path, dpi_scale,
+            include_comments,
         )
 
     rendered_pages: list[int] = [
