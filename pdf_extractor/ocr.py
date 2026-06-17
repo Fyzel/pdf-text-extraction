@@ -9,6 +9,7 @@ from typing import Any
 
 import fitz
 
+from pdf_extractor.annotations import extract_comments_markdown
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.mdlint import normalize_markdown
 from pdf_extractor.render import _DPI_SCALE
@@ -324,6 +325,7 @@ def _ocr_page_with_retry(
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
     pdf_path: Path | None = None,
     dpi_scale: float = _DPI_SCALE,
+    include_comments: bool = False,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
@@ -351,6 +353,8 @@ def _ocr_page_with_retry(
         pdf_path: Source PDF, used for exact embedded-image crops. When ``None``,
             diagrams are cropped from the rendered JPEG using model bboxes.
         dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
+        include_comments: When ``True`` and a source PDF is available, append the
+            page's text-bearing annotations as a ``## Comments`` section.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -363,9 +367,19 @@ def _ocr_page_with_retry(
 
     # Skip blank pages entirely — no Ollama call. Write a marker so the page
     # still appears (empty) in the combined output and is recorded as done.
+    # A blank page may still carry comment annotations (e.g. a lone sticky note),
+    # which are not in the rendered image, so preserve them when requested.
     if _is_blank_page(pdf_path, page_num, jpeg_path):
         print(f"  Page {page_num}: blank — skipped OCR")
-        md_path.write_text(_BLANK_PAGE_MARKER, encoding="utf-8")
+        comments_md: str = (
+            extract_comments_markdown(str(pdf_path), page_num)
+            if include_comments and pdf_path is not None
+            else ""
+        )
+        body: str = _BLANK_PAGE_MARKER
+        if comments_md:
+            body = f"{_BLANK_PAGE_MARKER}\n\n{comments_md}"
+        md_path.write_text(body, encoding="utf-8")
         return page_num, True, "", 0
 
     for instance in instances_ordered:
@@ -432,6 +446,10 @@ def _ocr_page_with_retry(
         parts: list[str] = [page_text]
         if diagram_refs:
             parts += ["", *diagram_refs]
+        if include_comments and pdf_path is not None:
+            comments_md = extract_comments_markdown(str(pdf_path), page_num)
+            if comments_md:
+                parts += ["", comments_md]
         md_path.write_text("\n".join(parts), encoding="utf-8")
 
         return page_num, True, "", cropped_count
@@ -449,6 +467,7 @@ def run_phase2(
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
     pdf_path: Path | None = None,
     dpi_scale: float = _DPI_SCALE,
+    include_comments: bool = False,
 ) -> None:
     """Run Phase 2 OCR concurrently across all available Ollama instances.
 
@@ -466,6 +485,8 @@ def run_phase2(
         ocr_timeout: Per-request HTTP timeout in seconds passed to each worker.
         pdf_path: Source PDF, forwarded to workers for exact embedded-image crops.
         dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
+        include_comments: When ``True``, append PDF annotations as a comments
+            section to each page; forwarded to every worker.
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
@@ -473,12 +494,12 @@ def run_phase2(
 
     def _args(
         page_num: int,
-    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None, float]:
+    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None, float, bool]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
         return (
             page_num, ordered, pages_dir, diagrams_dir, page_count,
-            ocr_timeout, pdf_path, dpi_scale,
+            ocr_timeout, pdf_path, dpi_scale, include_comments,
         )
 
     with ThreadPoolExecutor(max_workers=n) as executor:

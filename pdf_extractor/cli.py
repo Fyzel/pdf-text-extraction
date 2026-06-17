@@ -12,37 +12,42 @@ from pdf_extractor.ocr import run_phase2
 from pdf_extractor.render import _DPI_SCALE, get_page_count, render_pages
 from pdf_extractor.state import AppState, StateManager
 
-_USAGE: str = "Usage: python main.py <pdf_path> [--dpi-scale N]"
+_USAGE: str = "Usage: python main.py <pdf_path> [--dpi-scale N] [--include-comments]"
 _HELP: str = f"""\
 {_USAGE}
 
 Extract text and diagrams from a PDF via Ollama vision OCR.
 
 Arguments:
-  <pdf_path>      Path to the source PDF file.
-  --dpi-scale N   Page render scale factor (default 2.0, ~144 DPI). Higher
-                  values give sharper images and better OCR of small text at
-                  the cost of size and render time. Also accepts --dpi-scale=N.
-  -h, --help      Show this help message and exit.
+  <pdf_path>          Path to the source PDF file.
+  --dpi-scale N       Page render scale factor (default 2.0, ~144 DPI). Higher
+                      values give sharper images and better OCR of small text at
+                      the cost of size and render time. Also accepts --dpi-scale=N.
+  --include-comments  Append PDF comment annotations (sticky notes, highlight
+                      notes, etc.) to each page as a "## Comments" section.
+  -h, --help          Show this help message and exit.
 """
 
 
-def _parse_args(argv: list[str]) -> tuple[str | None, float, str | None]:
-    """Parse CLI arguments into a PDF path and render scale.
+def _parse_args(argv: list[str]) -> tuple[str | None, float, bool, str | None]:
+    """Parse CLI arguments into a PDF path, render scale, and comment flag.
 
-    Accepts one positional PDF path and an optional ``--dpi-scale N`` (or
-    ``--dpi-scale=N``) flag controlling the Phase 1 render resolution.
+    Accepts one positional PDF path, an optional ``--dpi-scale N`` (or
+    ``--dpi-scale=N``) flag controlling the Phase 1 render resolution, and an
+    optional ``--include-comments`` flag.
 
     Args:
         argv: Argument list excluding the program name (``sys.argv[1:]``).
 
     Returns:
-        Tuple of ``(pdf_path, dpi_scale, error)``. On success ``error`` is
-        ``None``; on a parse error ``pdf_path`` is ``None`` and ``error`` holds
-        a message. ``dpi_scale`` defaults to the module default when absent.
+        Tuple of ``(pdf_path, dpi_scale, include_comments, error)``. On success
+        ``error`` is ``None``; on a parse error ``pdf_path`` is ``None`` and
+        ``error`` holds a message. ``dpi_scale`` defaults to the module default
+        when absent.
     """
     pdf_path: str | None = None
     dpi_scale: float = _DPI_SCALE
+    include_comments: bool = False
     i: int = 0
     while i < len(argv):
         arg: str = argv[i]
@@ -52,21 +57,23 @@ def _parse_args(argv: list[str]) -> tuple[str | None, float, str | None]:
             else:
                 i += 1
                 if i >= len(argv):
-                    return None, dpi_scale, "--dpi-scale requires a value"
+                    return None, dpi_scale, include_comments, "--dpi-scale requires a value"
                 raw = argv[i]
             try:
                 dpi_scale = float(raw)
             except ValueError:
-                return None, dpi_scale, f"invalid --dpi-scale value: {raw}"
+                return None, dpi_scale, include_comments, f"invalid --dpi-scale value: {raw}"
             if dpi_scale <= 0:
-                return None, dpi_scale, "--dpi-scale must be a positive number"
+                return None, dpi_scale, include_comments, "--dpi-scale must be a positive number"
+        elif arg == "--include-comments":
+            include_comments = True
         elif pdf_path is None:
             pdf_path = arg
         else:
-            return None, dpi_scale, f"unexpected argument: {arg}"
+            return None, dpi_scale, include_comments, f"unexpected argument: {arg}"
         i += 1
 
-    return pdf_path, dpi_scale, None
+    return pdf_path, dpi_scale, include_comments, None
 
 
 def run() -> int:
@@ -94,8 +101,9 @@ def run() -> int:
 
     pdf_arg: str | None
     dpi_scale: float
+    include_comments: bool
     arg_err: str | None
-    pdf_arg, dpi_scale, arg_err = _parse_args(sys.argv[1:])
+    pdf_arg, dpi_scale, include_comments, arg_err = _parse_args(sys.argv[1:])
     if arg_err is not None:
         print(f"Error: {arg_err}\n{_USAGE}", file=sys.stderr)
         return 1
@@ -121,6 +129,7 @@ def run() -> int:
 
     print(f"Render workers: {config.max_render_workers}")
     print(f"DPI scale: {dpi_scale}")
+    print(f"Include comments: {include_comments}")
     print(f"Probing {len(config.instances)} Ollama instance(s)...")
 
     live: list[OllamaInstance] = probe_instances(config.instances)
@@ -206,6 +215,7 @@ def run() -> int:
         run_phase2(
             output_dir, page_count, ocr_pending, config.instances,
             state, state_mgr, config.ocr_timeout, pdf_path, dpi_scale,
+            include_comments,
         )
 
     rendered_pages: list[int] = [

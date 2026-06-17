@@ -16,6 +16,8 @@ State for all processing is tracked in a unified `state.json` file inside the ou
 
 The OCRed text from each page is saved as an individual markdown file. If Ollama flags a diagram on a page, the application crops the figure at its exact bounds — taken from the PDF's embedded image objects (`page.get_image_rects`) — and saves it as a separate image file in a designated directory. Cropping from the embedded image rect keeps the crop tight to the figure, with no surrounding caption or body text; the model's returned bounding box is used only as a fallback for vector-only figures that have no embedded raster image. The markdown file for that page includes references to the extracted diagram images.
 
+Optionally (CLI flag `--include-comments`), the application also reads the page's PDF comment annotations — sticky notes, FreeText boxes, and the popup notes attached to highlight/underline/strikeout markup — directly from the PDF and appends them to the page markdown as a `## Comments` section. This recovers comment text that lives only in the PDF's annotation objects and is therefore absent from the rendered image the model sees. Comments are excluded by default.
+
 If the OCR processing for a page fails, the application logs the error and continues processing the remaining pages. A summary of any pages that failed to process is printed at the end of execution.
 
 When all pages have been processed, the application combines all individual markdown files into a single markdown file. The combined file is saved in the same directory as the original PDF with the same name but a `.md` extension. Each page is preceded by a header in this format:

@@ -489,6 +489,57 @@ def test_ocr_skips_blank_page(tmp_path):
     assert (pages / "page_1.md").read_text(encoding="utf-8") == _BLANK_PAGE_MARKER
 
 
+def _make_pdf_with_comment(path: Path) -> None:
+    """One-page PDF with body text and a sticky-note annotation."""
+    doc = fitz.open()
+    page = doc.new_page(width=300, height=300)
+    page.insert_text((50, 50), "page body text")
+    note = page.add_text_annot((120, 120), "reviewer sticky note")
+    note.set_info(title="Reviewer")
+    note.update()
+    doc.save(str(path))
+    doc.close()
+
+
+def test_ocr_appends_comments_when_enabled(tmp_path):
+    body = {"text": "page body", "diagrams": []}
+    server = _start_mock_server(19515, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19515", "m")
+        pdf = tmp_path / "commented.pdf"
+        _make_pdf_with_comment(pdf)
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        _, ok, _, _ = _ocr_page_with_retry(
+            1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf, include_comments=True
+        )
+        assert ok
+        md = (pages / "page_1.md").read_text(encoding="utf-8")
+        assert "## Comments" in md
+        assert "reviewer sticky note" in md
+    finally:
+        server.shutdown()
+
+
+def test_ocr_omits_comments_by_default(tmp_path):
+    body = {"text": "page body", "diagrams": []}
+    server = _start_mock_server(19516, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19516", "m")
+        pdf = tmp_path / "commented.pdf"
+        _make_pdf_with_comment(pdf)
+        pages = tmp_path / "pages"; pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        _, ok, _, _ = _ocr_page_with_retry(
+            1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf
+        )
+        assert ok
+        md = (pages / "page_1.md").read_text(encoding="utf-8")
+        assert "## Comments" not in md
+    finally:
+        server.shutdown()
+
+
 def test_run_phase2_updates_state(tmp_path):
     body = {"text": "hello", "diagrams": []}
     server = _start_mock_server(19506, body)
