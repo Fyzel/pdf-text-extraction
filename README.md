@@ -133,7 +133,7 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-162 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked.
+167 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked. A further 6 live tests are opt-in (see below).
 
 To also run live tests against a real Ollama instance:
 
@@ -154,6 +154,10 @@ bin/clean-test-data
 Portable POSIX `sh` — works under Git Bash (Windows), Linux, and macOS. Source PDFs and checked-in `*-expected.md` fixtures are left untouched.
 
 See the [Testing wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Testing) for details.
+
+## Contributing
+
+Pull requests are reviewed by the code owners listed in [`.github/CODEOWNERS`](.github/CODEOWNERS). GitHub automatically requests their review on any PR that touches owned paths, so the relevant owner is added as a reviewer for you.
 
 ## Documentation
 
