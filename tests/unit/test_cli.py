@@ -122,6 +122,13 @@ def test_exit1_bad_dpi_scale():
         assert run() == 1
 
 
+def test_help_exits_zero(capsys):
+    with patch.object(sys, "argv", ["main.py", "--help"]):
+        assert run() == 0
+    out = capsys.readouterr().out
+    assert "--dpi-scale" in out
+
+
 # ---------------------------------------------------------------------------
 # Exit 2 — file not found
 # ---------------------------------------------------------------------------
