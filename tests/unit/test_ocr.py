@@ -449,6 +449,29 @@ def test_is_blank_page_text_pdf_not_blank(tmp_path):
     assert _is_blank_page(pdf, 1, jpeg) is False
 
 
+def test_page_white_ratio_missing_file_returns_zero(tmp_path):
+    # Unreadable image must not raise — returns 0.0 so the page is treated as non-blank.
+    assert _page_white_ratio(tmp_path / "does_not_exist.jpg") == 0.0
+
+
+def test_is_blank_page_unreadable_pdf_falls_back_to_whiteness(tmp_path):
+    # A corrupt PDF must not abort the precheck; it falls through to the pixel check.
+    bad_pdf = tmp_path / "corrupt.pdf"
+    bad_pdf.write_bytes(b"not a real pdf \x00\x01")
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    assert _is_blank_page(bad_pdf, 1, jpeg) is True
+
+
+def test_is_blank_page_out_of_range_page_falls_back(tmp_path):
+    pdf = tmp_path / "blank.pdf"
+    _make_blank_pdf(pdf, pages=1)
+    jpeg = tmp_path / "white.jpg"
+    _make_white_jpeg(jpeg)
+    # page_num beyond the document must not raise.
+    assert _is_blank_page(pdf, 99, jpeg) is True
+
+
 def test_ocr_skips_blank_page(tmp_path):
     # Point at a port with no server: if OCR were attempted it would fail.
     # A successful return therefore proves the Ollama call was skipped.

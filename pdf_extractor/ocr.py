@@ -253,12 +253,16 @@ def _page_white_ratio(jpeg_path: Path) -> float:
 
     Returns:
         Ratio in ``[0.0, 1.0]`` of white pixels to total pixels. Returns ``0.0``
-        for an unreadable or empty image (treated as non-blank).
+        for a missing, corrupt, or empty image, so such pages are treated as
+        non-blank and still get a real OCR attempt.
     """
-    pix: fitz.Pixmap = fitz.Pixmap(str(jpeg_path))
-    # Halve the dimensions repeatedly until small; keeps the Python scan fast.
-    while pix.width > 200 or pix.height > 200:
-        pix.shrink(1)
+    try:
+        pix: fitz.Pixmap = fitz.Pixmap(str(jpeg_path))
+        # Halve the dimensions repeatedly until small; keeps the Python scan fast.
+        while pix.width > 200 or pix.height > 200:
+            pix.shrink(1)
+    except Exception:  # noqa: BLE001 — any decode failure means "treat as non-blank"
+        return 0.0
 
     total: int = pix.width * pix.height
     if total == 0:
@@ -266,7 +270,9 @@ def _page_white_ratio(jpeg_path: Path) -> float:
 
     data: bytes = pix.samples
     stride: int = pix.n
-    channels: int = min(3, stride)  # ignore any alpha channel
+    # Count only colour channels; the alpha channel (if any) is not part of
+    # the visible colour, so n=2 (gray+alpha) checks 1 channel, n=4 (RGBA) 3.
+    channels: int = max(1, pix.n - pix.alpha)
     white: int = 0
     for i in range(0, len(data), stride):
         if all(data[i + c] >= _WHITE_CHANNEL_MIN for c in range(channels)):
@@ -282,6 +288,10 @@ def _is_blank_page(pdf_path: Path | None, page_num: int, jpeg_path: Path) -> boo
     for the no-PDF case — the page is blank when its rendered image is
     near-uniformly white, which also catches scanned/image-only blank pages.
 
+    A PDF that cannot be opened or paged is treated as "can't prove non-blank":
+    the inspection is skipped and the decision falls through to the whiteness
+    heuristic rather than aborting OCR for the page.
+
     Args:
         pdf_path: Source PDF, or ``None`` when unavailable.
         page_num: 1-based page number.
@@ -291,13 +301,16 @@ def _is_blank_page(pdf_path: Path | None, page_num: int, jpeg_path: Path) -> boo
         ``True`` when the page should be treated as blank.
     """
     if pdf_path is not None:
-        doc: fitz.Document = fitz.open(str(pdf_path))
         try:
-            page: fitz.Page = doc[page_num - 1]
-            if page.get_text().strip() or page.get_drawings():
-                return False
-        finally:
-            doc.close()
+            doc: fitz.Document = fitz.open(str(pdf_path))
+            try:
+                page: fitz.Page = doc[page_num - 1]
+                if page.get_text().strip() or page.get_drawings():
+                    return False
+            finally:
+                doc.close()
+        except Exception:  # noqa: BLE001 — can't inspect PDF; fall back to whiteness
+            pass  # fall through to the pixel-whiteness check
 
     return _page_white_ratio(jpeg_path) >= _BLANK_WHITE_RATIO
 

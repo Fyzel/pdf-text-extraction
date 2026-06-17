@@ -134,7 +134,7 @@ See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wik
 pytest tests/
 ```
 
-174 tests across unit, integration, and end-to-end layers. No real Ollama instance required — all HTTP calls are mocked. A further 6 live tests are opt-in (see below).
+The test suite spans unit, integration, and end-to-end layers. No real Ollama instance is required — all HTTP calls are mocked. A separate set of live tests is opt-in (see below).
 
 To also run live tests against a real Ollama instance:
 
