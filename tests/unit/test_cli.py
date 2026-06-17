@@ -9,7 +9,8 @@ from unittest.mock import patch
 
 import fitz
 
-from pdf_extractor.cli import run
+from pdf_extractor.cli import _parse_args, run
+from pdf_extractor.render import _DPI_SCALE
 
 
 def _make_pdf(path: Path, pages: int = 1) -> None:
@@ -58,6 +59,66 @@ def _start_ollama_mock(port: int, ocr_body: dict) -> HTTPServer:
 
 def test_exit1_no_argument():
     with patch.object(sys, "argv", ["main.py"]):
+        assert run() == 1
+
+
+# ---------------------------------------------------------------------------
+# Argument parsing — _parse_args / --dpi-scale
+# ---------------------------------------------------------------------------
+
+def test_parse_args_pdf_only():
+    pdf, dpi, err = _parse_args(["doc.pdf"])
+    assert pdf == "doc.pdf"
+    assert dpi == _DPI_SCALE
+    assert err is None
+
+
+def test_parse_args_dpi_scale_space():
+    pdf, dpi, err = _parse_args(["doc.pdf", "--dpi-scale", "4.0"])
+    assert pdf == "doc.pdf"
+    assert dpi == 4.0
+    assert err is None
+
+
+def test_parse_args_dpi_scale_equals():
+    pdf, dpi, err = _parse_args(["--dpi-scale=3.5", "doc.pdf"])
+    assert pdf == "doc.pdf"
+    assert dpi == 3.5
+    assert err is None
+
+
+def test_parse_args_missing_value():
+    pdf, _, err = _parse_args(["doc.pdf", "--dpi-scale"])
+    assert pdf is None
+    assert err is not None
+
+
+def test_parse_args_invalid_value():
+    pdf, _, err = _parse_args(["doc.pdf", "--dpi-scale", "huge"])
+    assert pdf is None
+    assert err is not None
+
+
+def test_parse_args_non_positive_value():
+    pdf, _, err = _parse_args(["doc.pdf", "--dpi-scale", "0"])
+    assert pdf is None
+    assert err is not None
+
+
+def test_parse_args_unexpected_extra():
+    pdf, _, err = _parse_args(["doc.pdf", "extra.pdf"])
+    assert pdf is None
+    assert err is not None
+
+
+def test_parse_args_no_pdf():
+    pdf, _, err = _parse_args(["--dpi-scale", "2.0"])
+    assert pdf is None
+    assert err is None
+
+
+def test_exit1_bad_dpi_scale():
+    with patch.object(sys, "argv", ["main.py", "doc.pdf", "--dpi-scale", "nope"]):
         assert run() == 1
 
 

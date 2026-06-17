@@ -197,6 +197,7 @@ def _crop_pdf_region(
     page_num: int,
     rect: fitz.Rect,
     output_path: Path,
+    dpi_scale: float = _DPI_SCALE,
 ) -> None:
     """Render a page-coordinate rectangle from the PDF directly to a JPEG.
 
@@ -208,12 +209,13 @@ def _crop_pdf_region(
         page_num: 1-based page number.
         rect: Region to crop, in page points.
         output_path: Destination path for the cropped JPEG.
+        dpi_scale: Render scale factor; should match the Phase 1 page render.
     """
     doc: fitz.Document = fitz.open(str(pdf_path))
     try:
         page: fitz.Page = doc[page_num - 1]
         pix: fitz.Pixmap = page.get_pixmap(
-            matrix=fitz.Matrix(_DPI_SCALE, _DPI_SCALE), clip=rect
+            matrix=fitz.Matrix(dpi_scale, dpi_scale), clip=rect
         )
         pix.save(str(output_path))
     finally:
@@ -242,6 +244,7 @@ def _ocr_page_with_retry(
     page_count: int,
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
     pdf_path: Path | None = None,
+    dpi_scale: float = _DPI_SCALE,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
@@ -264,6 +267,7 @@ def _ocr_page_with_retry(
         ocr_timeout: Per-request HTTP timeout in seconds.
         pdf_path: Source PDF, used for exact embedded-image crops. When ``None``,
             diagrams are cropped from the rendered JPEG using model bboxes.
+        dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -309,7 +313,7 @@ def _ocr_page_with_retry(
                     diag_filename: str = f"{stem}_diagram_{idx}.jpg"
                     diag_path: Path = diagrams_dir / diag_filename
                     diagrams_dir.mkdir(parents=True, exist_ok=True)
-                    _crop_pdf_region(pdf_path, page_num, rect, diag_path)
+                    _crop_pdf_region(pdf_path, page_num, rect, diag_path, dpi_scale)
                     diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
                     cropped_count += 1
                 except Exception as exc:  # noqa: BLE001
@@ -354,6 +358,7 @@ def run_phase2(
     state_mgr: StateManager,
     ocr_timeout: int = _DEFAULT_OCR_TIMEOUT,
     pdf_path: Path | None = None,
+    dpi_scale: float = _DPI_SCALE,
 ) -> None:
     """Run Phase 2 OCR concurrently across all available Ollama instances.
 
@@ -370,6 +375,7 @@ def run_phase2(
         state_mgr: StateManager for serialised, atomic state writes.
         ocr_timeout: Per-request HTTP timeout in seconds passed to each worker.
         pdf_path: Source PDF, forwarded to workers for exact embedded-image crops.
+        dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
@@ -377,10 +383,13 @@ def run_phase2(
 
     def _args(
         page_num: int,
-    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None]:
+    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None, float]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
-        return page_num, ordered, pages_dir, diagrams_dir, page_count, ocr_timeout, pdf_path
+        return (
+            page_num, ordered, pages_dir, diagrams_dir, page_count,
+            ocr_timeout, pdf_path, dpi_scale,
+        )
 
     with ThreadPoolExecutor(max_workers=n) as executor:
         futures = {
