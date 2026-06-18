@@ -17,6 +17,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 - Prose reflow — soft-wrapped paragraph lines are joined into one line and stray whole-paragraph emphasis is removed, matching clean Markdown
 - Blank-page skipping — empty pages are detected and skipped, avoiding a wasted OCR call
 - PDF comments — optionally extract annotation text (sticky notes, highlight notes) into a per-page Comments section (`--include-comments`)
+- Hyperlinks — optionally rewrite plain text as Markdown links using the PDF's embedded URI hyperlinks (`--include-links`)
 - Parallel PDF rendering across all available CPU cores
 - Concurrent OCR across multiple Ollama instances
 - Resumable — interrupted runs continue from where they left off
@@ -78,18 +79,18 @@ cp ollama.sample.json ollama.json
 }
 ```
 
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `max_render_workers` | No | All CPU cores | Cap on parallel PDF rendering processes |
-| `instances[].url` | Yes | — | Ollama base URL |
-| `instances[].model` | No | `qwen2.5vl:7b` | Model for this instance |
+| Field                | Required  | Default        | Description                             |
+|----------------------|-----------|----------------|-----------------------------------------|
+| `max_render_workers` | No        | All CPU cores  | Cap on parallel PDF rendering processes |
+| `instances[].url`    | Yes       | —              | Ollama base URL                         |
+| `instances[].model`  | No        | `qwen2.5vl:7b` | Model for this instance                 |
 
 Multiple instances are supported — pages are distributed across them concurrently. See the [Configuration wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Configuration) for full details.
 
 ## Usage
 
 ```sh
-python main.py /path/to/document.pdf [--dpi-scale N] [--include-comments] [--rerun-pages SPEC]
+python main.py /path/to/document.pdf [--dpi-scale N] [--include-comments] [--include-links] [--rerun-pages SPEC]
 ```
 
 | Argument             | Required   | Default  | Description                                                                                                                                                                                                                                                                                                                                                                      |
@@ -97,6 +98,7 @@ python main.py /path/to/document.pdf [--dpi-scale N] [--include-comments] [--rer
 | `<pdf_path>`         | Yes        | —        | Path to the source PDF                                                                                                                                                                                                                                                                                                                                                           |
 | `--dpi-scale N`      | No         | `2.0`    | Page render scale factor (`2.0` ≈ 144 DPI). Raise for sharper images and OCR of fine print, at the cost of larger images and slower rendering. Applies to both full-page renders and diagram crops.                                                                                                                                                                              |
 | `--include-comments` | No         | off      | Append PDF comment annotations (sticky notes, highlight/underline notes, FreeText) to each page as a `## Comments` section. Excluded by default.                                                                                                                                                                                                                                 |
+| `--include-links`    | No         | off      | Rewrite plain text as Markdown links using the PDF's embedded URI hyperlinks (e.g. `[text](https://…)`). Only external URI links are applied; internal page jumps are skipped. Fenced code, table rows, and existing links are left untouched. Excluded by default.                                                                                                              |
 | `--rerun-pages SPEC` | No         | —        | Reprocess specific pages from a previous run. `SPEC` is a comma-separated list of page numbers and/or `N-M` ranges, e.g. `3,5,7-9`. The selected pages' image, diagrams, and Markdown plus the combined output are archived under `<stem>/_archive/vN/` (moved, not deleted) then regenerated. Out-of-range pages are skipped with a warning; requires an existing `state.json`. |
 
 ```sh
@@ -105,6 +107,9 @@ python main.py /path/to/document.pdf --dpi-scale 4
 
 # include reviewer comments from the PDF in the Markdown output
 python main.py /path/to/document.pdf --include-comments
+
+# rewrite plain text as Markdown links from the PDF's embedded hyperlinks
+python main.py /path/to/document.pdf --include-links
 
 # reprocess pages 3, 5, and 7–9 from a prior run (prior files archived first)
 python main.py /path/to/document.pdf --rerun-pages 3,5,7-9

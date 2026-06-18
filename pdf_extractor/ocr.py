@@ -12,6 +12,7 @@ import fitz
 from pdf_extractor.annotations import extract_comments_markdown
 from pdf_extractor.config import OllamaInstance
 from pdf_extractor.headings import extract_heading_scale, fix_headings
+from pdf_extractor.links import extract_links, splice_links
 from pdf_extractor.mdlint import normalize_markdown
 from pdf_extractor.reflow import reflow_prose
 from pdf_extractor.render import _DPI_SCALE
@@ -332,6 +333,7 @@ def _ocr_page_with_retry(
     dpi_scale: float = _DPI_SCALE,
     include_comments: bool = False,
     heading_scale: list[float] | None = None,
+    include_links: bool = False,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
@@ -366,6 +368,8 @@ def _ocr_page_with_retry(
             relevel the page's headings. Only takes effect when ``pdf_path`` is
             also supplied; ``fix_headings`` no-ops without a PDF. ``None`` or
             empty leaves headings as-is.
+        include_links: When ``True`` and a source PDF is available, rewrite the
+            page's plain anchor text as Markdown links using the PDF's URI links.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -419,6 +423,11 @@ def _ocr_page_with_retry(
         if pdf_path is not None:
             page_text = splice_tables(
                 page_text, extract_tables_markdown(str(pdf_path), page_num)
+            )
+        # Rewrite plain anchor text as Markdown links using the PDF's URI links.
+        if include_links and pdf_path is not None:
+            page_text = splice_links(
+                page_text, extract_links(str(pdf_path), page_num)
             )
         raw_diagrams: list[dict[str, Any]] = data.get("diagrams", [])
 
@@ -490,6 +499,7 @@ def run_phase2(
     pdf_path: Path | None = None,
     dpi_scale: float = _DPI_SCALE,
     include_comments: bool = False,
+    include_links: bool = False,
 ) -> None:
     """Run Phase 2 OCR concurrently across all available Ollama instances.
 
@@ -509,6 +519,8 @@ def run_phase2(
         dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
         include_comments: When ``True``, append PDF annotations as a comments
             section to each page; forwarded to every worker.
+        include_links: When ``True``, rewrite plain anchor text as Markdown links
+            from the PDF's URI links on each page; forwarded to every worker.
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
@@ -524,13 +536,14 @@ def run_phase2(
         page_num: int,
     ) -> tuple[
         int, list[OllamaInstance], Path, Path, int, int, Path | None, float, bool,
-        list[float],
+        list[float], bool,
     ]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
         return (
             page_num, ordered, pages_dir, diagrams_dir, page_count,
             ocr_timeout, pdf_path, dpi_scale, include_comments, heading_scale,
+            include_links,
         )
 
     with ThreadPoolExecutor(max_workers=n) as executor:
