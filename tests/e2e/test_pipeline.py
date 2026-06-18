@@ -241,6 +241,50 @@ def test_e2e_rerun_exits_0(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# --rerun-pages: archives prior artifacts, reprocesses, reassembles → exit 0
+# ---------------------------------------------------------------------------
+
+def test_e2e_rerun_pages_archives_and_reprocesses(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_fixture(tmp_path, "simple.pdf")
+        cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
+        (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
+
+        with patch.object(sys, "argv", ["main.py", str(pdf)]):
+            assert run() == 0
+        out_md = tmp_path / "simple.md"
+        assert out_md.is_file()
+
+        with patch.object(sys, "argv", ["main.py", str(pdf), "--rerun-pages", "1"]):
+            assert run() == 0
+
+        # Prior artifacts archived under _archive/v1, output rebuilt.
+        archive = tmp_path / "simple" / "_archive" / "v1"
+        assert archive.is_dir()
+        assert (archive / "simple.md").is_file()
+        assert out_md.is_file()
+    finally:
+        server.shutdown()
+
+
+def test_e2e_rerun_pages_no_state_exit_1(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    port = _alloc_port()
+    server = _start_mock(port)
+    try:
+        pdf = _copy_fixture(tmp_path, "simple.pdf")
+        cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
+        (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
+        with patch.object(sys, "argv", ["main.py", str(pdf), "--rerun-pages", "1"]):
+            assert run() == 1
+    finally:
+        server.shutdown()
+
+
+# ---------------------------------------------------------------------------
 # corrupt.pdf → exit 5 (or 3)
 # ---------------------------------------------------------------------------
 

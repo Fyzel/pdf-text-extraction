@@ -103,6 +103,29 @@ class StateManager:
                 setattr(page, name, value)
             self._write(state)
 
+    def reset_pages(self, state: AppState, page_nums: list[int]) -> None:
+        """Clear all processing flags for the given pages and persist atomically.
+
+        For each page, resets ``image_done``, ``image_failed``, ``ocr_done``,
+        and ``ocr_failed`` to ``False`` and ``diagram_count`` to ``0``. Also
+        clears ``combined_done`` on the whole state so Phase 3 reassembles. Used
+        by the ``--rerun-pages`` feature to force reprocessing of specific pages.
+
+        Args:
+            state: Shared AppState instance to mutate.
+            page_nums: 1-based page numbers to reset.
+        """
+        with self._lock:
+            for page_num in page_nums:
+                page: PageState = state.pages[str(page_num)]
+                page.image_done = False
+                page.image_failed = False
+                page.ocr_done = False
+                page.ocr_failed = False
+                page.diagram_count = 0
+            state.combined_done = False
+            self._write(state)
+
     def mark_combined_done(self, state: AppState) -> None:
         """Set ``combined_done = True`` and persist under the lock.
 

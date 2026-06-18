@@ -17,7 +17,7 @@ Full pipeline implemented and tested. `main.py` is the entry point. Core modules
 | `tables.py` | Phase 2 helper — extract tables from the PDF via PyMuPDF `find_tables`, render as aligned Markdown, splice over the model's table blocks |
 | `annotations.py` | Phase 2 helper — extract text-bearing PDF annotations (comments) via PyMuPDF `page.annots()`, render as a `## Comments` section; opt-in via `--include-comments` |
 | `combine.py` | Phase 3 — merge per-page `.md` into single output file |
-| `cli.py` | Entry point, phases 1–3, exit codes 0–7 |
+| `cli.py` | Entry point, phases 1–3, exit codes 0–7; `--rerun-pages SPEC` (e.g. `3,5,7-9`) archives a selected page's image/diagrams/markdown and the combined output under `<stem>/_archive/vN/` (moved, not deleted), resets their state via `StateManager.reset_pages`, then reprocesses and reassembles |
 
 Test suite: `tests/` — unit, integration, and e2e layers. Run with `pytest tests/`.
 
@@ -64,8 +64,9 @@ Note: `ollama-dev.json` is the dev tooling config (gemma4). `ollama.json` is the
 
 **Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge, squash, `git commit -m`, and empty diff.
 
-**PR creation** — `bin/create-pr` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`.
+**PR creation** — `bin/create-pr [remote-branch]` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`. The target branch may be passed as the first argument; omit it to pick interactively from the remote branch list.
 
 ```sh
-bin/create-pr
+bin/create-pr        # prompt for target branch
+bin/create-pr dev    # target dev, no prompt
 ```

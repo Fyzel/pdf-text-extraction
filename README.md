@@ -87,14 +87,15 @@ Multiple instances are supported — pages are distributed across them concurren
 ## Usage
 
 ```sh
-python main.py /path/to/document.pdf [--dpi-scale N] [--include-comments]
+python main.py /path/to/document.pdf [--dpi-scale N] [--include-comments] [--rerun-pages SPEC]
 ```
 
-| Argument | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `<pdf_path>` | Yes | — | Path to the source PDF |
-| `--dpi-scale N` | No | `2.0` | Page render scale factor (`2.0` ≈ 144 DPI). Raise for sharper images and OCR of fine print, at the cost of larger images and slower rendering. Applies to both full-page renders and diagram crops. |
-| `--include-comments` | No | off | Append PDF comment annotations (sticky notes, highlight/underline notes, FreeText) to each page as a `## Comments` section. Excluded by default. |
+| Argument             | Required   | Default  | Description                                                                                                                                                                                                                                                                                                                                                                      |
+|----------------------|------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `<pdf_path>`         | Yes        | —        | Path to the source PDF                                                                                                                                                                                                                                                                                                                                                           |
+| `--dpi-scale N`      | No         | `2.0`    | Page render scale factor (`2.0` ≈ 144 DPI). Raise for sharper images and OCR of fine print, at the cost of larger images and slower rendering. Applies to both full-page renders and diagram crops.                                                                                                                                                                              |
+| `--include-comments` | No         | off      | Append PDF comment annotations (sticky notes, highlight/underline notes, FreeText) to each page as a `## Comments` section. Excluded by default.                                                                                                                                                                                                                                 |
+| `--rerun-pages SPEC` | No         | —        | Reprocess specific pages from a previous run. `SPEC` is a comma-separated list of page numbers and/or `N-M` ranges, e.g. `3,5,7-9`. The selected pages' image, diagrams, and Markdown plus the combined output are archived under `<stem>/_archive/vN/` (moved, not deleted) then regenerated. Out-of-range pages are skipped with a warning; requires an existing `state.json`. |
 
 ```sh
 # render at ~288 DPI for clearer capture of dense or small text
@@ -102,6 +103,9 @@ python main.py /path/to/document.pdf --dpi-scale 4
 
 # include reviewer comments from the PDF in the Markdown output
 python main.py /path/to/document.pdf --include-comments
+
+# reprocess pages 3, 5, and 7–9 from a prior run (prior files archived first)
+python main.py /path/to/document.pdf --rerun-pages 3,5,7-9
 ```
 
 Output is written alongside the PDF:
@@ -113,23 +117,24 @@ Output is written alongside the PDF:
 └── document/
     ├── state.json        ← resume state
     ├── pages/            ← per-page JPEGs and Markdown
-    └── diagrams/         ← extracted diagram images
+    ├── diagrams/         ← extracted diagram images
+    └── _archive/         ← prior artifacts kept by --rerun-pages (vN per rerun)
 ```
 
 Re-running the same command resumes from where processing left off.
 
 ## Exit Codes
 
-| Code | Condition |
-|------|-----------|
-| 0 | Success |
-| 1 | Missing PDF path, or invalid command-line arguments |
-| 2 | PDF file not found |
-| 3 | PDF file not readable |
-| 4 | No Ollama instances reachable |
-| 5 | All pages failed image rendering |
-| 6 | All pages failed OCR |
-| 7 | Output file write error |
+| Code   | Condition                                           |
+|--------|-----------------------------------------------------|
+| 0      | Success                                             |
+| 1      | Missing PDF path, or invalid command-line arguments |
+| 2      | PDF file not found                                  |
+| 3      | PDF file not readable                               |
+| 4      | No Ollama instances reachable                       |
+| 5      | All pages failed image rendering                    |
+| 6      | All pages failed OCR                                |
+| 7      | Output file write error                             |
 
 See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Error-Codes) for remediation steps.
 
