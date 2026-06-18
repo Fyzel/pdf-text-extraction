@@ -73,77 +73,91 @@ def test_exit1_no_argument():
 # ---------------------------------------------------------------------------
 
 def test_parse_args_pdf_only():
-    pdf, dpi, _, _, err = _parse_args(["doc.pdf"])
+    pdf, dpi, _, _, _, err = _parse_args(["doc.pdf"])
     assert pdf == "doc.pdf"
     assert dpi == _DPI_SCALE
     assert err is None
 
 
 def test_parse_args_dpi_scale_space():
-    pdf, dpi, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "4.0"])
+    pdf, dpi, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "4.0"])
     assert pdf == "doc.pdf"
     assert dpi == 4.0
     assert err is None
 
 
 def test_parse_args_dpi_scale_equals():
-    pdf, dpi, _, _, err = _parse_args(["--dpi-scale=3.5", "doc.pdf"])
+    pdf, dpi, _, _, _, err = _parse_args(["--dpi-scale=3.5", "doc.pdf"])
     assert pdf == "doc.pdf"
     assert dpi == 3.5
     assert err is None
 
 
 def test_parse_args_missing_value():
-    pdf, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale"])
+    pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_invalid_value():
-    pdf, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "huge"])
+    pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "huge"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_non_positive_value():
-    pdf, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "0"])
+    pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "0"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_unexpected_extra():
-    pdf, _, _, _, err = _parse_args(["doc.pdf", "extra.pdf"])
+    pdf, _, _, _, _, err = _parse_args(["doc.pdf", "extra.pdf"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_no_pdf():
-    pdf, _, _, _, err = _parse_args(["--dpi-scale", "2.0"])
+    pdf, _, _, _, _, err = _parse_args(["--dpi-scale", "2.0"])
     assert pdf is None
     assert err is None
 
 
 def test_parse_args_include_comments_default_false():
-    pdf, _, include_comments, _, err = _parse_args(["doc.pdf"])
+    pdf, _, include_comments, _, _, err = _parse_args(["doc.pdf"])
     assert pdf == "doc.pdf"
     assert include_comments is False
     assert err is None
 
 
 def test_parse_args_include_comments_flag():
-    pdf, _, include_comments, _, err = _parse_args(["doc.pdf", "--include-comments"])
+    pdf, _, include_comments, _, _, err = _parse_args(["doc.pdf", "--include-comments"])
     assert pdf == "doc.pdf"
     assert include_comments is True
     assert err is None
 
 
 def test_parse_args_include_comments_with_dpi():
-    pdf, dpi, include_comments, _, err = _parse_args(
+    pdf, dpi, include_comments, _, _, err = _parse_args(
         ["--include-comments", "--dpi-scale", "3", "doc.pdf"]
     )
     assert pdf == "doc.pdf"
     assert dpi == 3.0
     assert include_comments is True
+    assert err is None
+
+
+def test_parse_args_include_links_default_false():
+    pdf, _, _, include_links, _, err = _parse_args(["doc.pdf"])
+    assert pdf == "doc.pdf"
+    assert include_links is False
+    assert err is None
+
+
+def test_parse_args_include_links_flag():
+    pdf, _, _, include_links, _, err = _parse_args(["doc.pdf", "--include-links"])
+    assert pdf == "doc.pdf"
+    assert include_links is True
     assert err is None
 
 
@@ -174,7 +188,7 @@ def test_page_spec_malformed_raises(bad):
 
 
 def test_parse_args_rerun_pages_space():
-    pdf, _, _, rerun, err = _parse_args(["doc.pdf", "--rerun-pages", "3,5,7-9"])
+    pdf, _, _, _, rerun, err = _parse_args(["doc.pdf", "--rerun-pages", "3,5,7-9"])
     assert pdf == "doc.pdf"
     assert rerun == {3, 5, 7, 8, 9}
     assert err is None
@@ -194,13 +208,13 @@ def test_parse_args_rerun_pages_default_none():
 
 
 def test_parse_args_rerun_pages_missing_value():
-    pdf, _, _, _, err = _parse_args(["doc.pdf", "--rerun-pages"])
+    pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--rerun-pages"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_rerun_pages_malformed():
-    pdf, _, _, _, err = _parse_args(["doc.pdf", "--rerun-pages", "3,x"])
+    pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--rerun-pages", "3,x"])
     assert pdf is None
     assert err is not None
 
