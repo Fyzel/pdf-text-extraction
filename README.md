@@ -142,6 +142,7 @@ Re-running the same command resumes from where processing left off.
 | 5      | All pages failed image rendering                    |
 | 6      | All pages failed OCR                                |
 | 7      | Output file write error                             |
+| 8      | `state.json` does not match the current PDF (different path or page count) |
 
 See the [Error Codes wiki page](https://github.com/Fyzel/pdf-text-extraction/wiki/Error-Codes) for remediation steps.
 

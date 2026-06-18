@@ -3,7 +3,12 @@ import threading
 import pytest
 from pathlib import Path
 
-from pdf_extractor.state import AppState, PageState, StateManager
+from pdf_extractor.state import (
+    AppState,
+    PageState,
+    StateManager,
+    StateMismatchError,
+)
 
 
 def _make_sm(tmp_path: Path) -> tuple[StateManager, AppState]:
@@ -52,6 +57,41 @@ def test_load_existing_state(tmp_path):
     sm2 = StateManager(tmp_path)
     st2 = sm2.load_or_init(tmp_path / "fake.pdf", page_count=3)
     assert st2.pages["1"].image_done
+
+
+# ---------------------------------------------------------------------------
+# Validation against the current PDF (issue #71)
+# ---------------------------------------------------------------------------
+
+def test_load_mismatched_page_count_raises(tmp_path):
+    # state.json from a 3-page run; the PDF now reports 5 pages.
+    _make_sm(tmp_path)
+    sm2 = StateManager(tmp_path)
+    with pytest.raises(StateMismatchError):
+        sm2.load_or_init(tmp_path / "fake.pdf", page_count=5)
+
+
+def test_load_mismatched_pdf_path_raises(tmp_path):
+    # state.json belongs to fake.pdf; a different PDF path is supplied for the
+    # same output_dir (e.g. a foreign or moved state.json).
+    _make_sm(tmp_path)
+    sm2 = StateManager(tmp_path)
+    with pytest.raises(StateMismatchError):
+        sm2.load_or_init(tmp_path / "other.pdf", page_count=3)
+
+
+def test_load_matching_pdf_does_not_raise(tmp_path):
+    _make_sm(tmp_path)
+    sm2 = StateManager(tmp_path)
+    st2 = sm2.load_or_init(tmp_path / "fake.pdf", page_count=3)
+    assert st2.page_count == 3
+
+
+def test_fresh_init_skips_validation(tmp_path):
+    # No existing state.json → no validation, any page count is accepted.
+    sm = StateManager(tmp_path)
+    st = sm.load_or_init(tmp_path / "fake.pdf", page_count=9)
+    assert st.page_count == 9
 
 
 # ---------------------------------------------------------------------------

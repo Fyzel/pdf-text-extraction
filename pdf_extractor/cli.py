@@ -10,7 +10,7 @@ from pdf_extractor.config import AppConfig, OllamaInstance, load_config
 from pdf_extractor.health import probe_instances
 from pdf_extractor.ocr import _page_stem, run_phase2
 from pdf_extractor.render import _DPI_SCALE, get_page_count, render_pages
-from pdf_extractor.state import AppState, StateManager
+from pdf_extractor.state import AppState, StateManager, StateMismatchError
 
 _USAGE: str = (
     "Usage: python main.py <pdf_path> [--dpi-scale N] [--include-comments] "
@@ -254,6 +254,8 @@ def run() -> int:
         - ``5``: All pages failed image rendering.
         - ``6``: All rendered pages failed OCR.
         - ``7``: Combined output file write failed.
+        - ``8``: Existing state.json does not match the current PDF (different
+          path or page count).
     """
     if any(a in ("-h", "--help") for a in sys.argv[1:]):
         print(_HELP)
@@ -337,7 +339,11 @@ def run() -> int:
         if not in_range:
             print("Error: --rerun-pages: no valid pages to rerun", file=sys.stderr)
             return 1
-        state = state_mgr.load_or_init(pdf_path, page_count)
+        try:
+            state = state_mgr.load_or_init(pdf_path, page_count)
+        except StateMismatchError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 8
         archive_dir: Path | None = _archive_page_artifacts(
             output_dir, pdf_path, page_count, in_range,
         )
@@ -346,7 +352,11 @@ def run() -> int:
         state_mgr.reset_pages(state, in_range)
         print(f"Rerunning page(s): {', '.join(str(p) for p in in_range)}")
     else:
-        state = state_mgr.load_or_init(pdf_path, page_count)
+        try:
+            state = state_mgr.load_or_init(pdf_path, page_count)
+        except StateMismatchError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 8
 
     run_status: str = state_mgr.status(state)
     if run_status == "complete":
