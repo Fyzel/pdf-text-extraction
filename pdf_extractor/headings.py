@@ -29,6 +29,7 @@ _MATCH_RATIO: float = 0.85
 _MAX_LEVEL: int = 6
 
 _HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+")
+_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
 _MARKER_RE = re.compile(r"[#*_`]+")
 _WS_RE = re.compile(r"\s+")
 
@@ -153,9 +154,11 @@ def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[flo
 
     For each line: a model heading or a plain line matching a PDF heading is
     rewritten at the PDF-derived level; a model heading that matches no PDF
-    heading is demoted to plain text. Non-heading prose is left unchanged. When
-    the document has no heading scale (``scale`` empty) or no source PDF, the
-    text is returned untouched so the model's own markup stands as a fallback.
+    heading is demoted to plain text. Non-heading prose is left unchanged. Lines
+    inside a fenced code block (``` ``` ``` / ``~~~``) are emitted verbatim, so a
+    ``#`` comment or heading-like line in code is never rewritten. When the
+    document has no heading scale (``scale`` empty) or no source PDF, the text is
+    returned untouched so the model's own markup stands as a fallback.
 
     Args:
         text: Per-page Markdown text from the OCR response.
@@ -172,7 +175,15 @@ def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[flo
     headings: list[tuple[str, int]] = _page_headings(pdf_path, page_num, scale)
 
     out: list[str] = []
+    in_fence: bool = False
     for line in text.split("\n"):
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if in_fence:
+            out.append(line)
+            continue
         is_heading: bool = bool(_HEADING_RE.match(line))
         stripped: str = line.strip()
         if not stripped:

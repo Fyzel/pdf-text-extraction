@@ -138,3 +138,43 @@ def test_noop_when_scale_empty(tmp_path):
 
 def test_noop_when_pdf_none(tmp_path):
     assert fix_headings("# Whatever", None, 1, [18.0]) == "# Whatever"
+
+
+# ---------------------------------------------------------------------------
+# fenced code blocks left untouched (issue #72)
+# ---------------------------------------------------------------------------
+
+def test_skips_heading_like_line_inside_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # "# Sub Heading" inside a fence is a code comment, not a heading — verbatim.
+    text = "```\n# Sub Heading\n```"
+    assert fix_headings(text, str(pdf), 1, scale) == text
+
+
+def test_skips_promotion_inside_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # A plain line matching a PDF heading must not be promoted inside a fence.
+    text = "```python\nSub Heading\n```"
+    assert fix_headings(text, str(pdf), 1, scale) == text
+
+
+def test_skips_tilde_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    text = "~~~\n# Sub Heading\n~~~"
+    assert fix_headings(text, str(pdf), 1, scale) == text
+
+
+def test_corrects_heading_after_closed_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # Fence state toggles closed; the heading after it is still corrected.
+    text = "```\n# Sub Heading\n```\n# Sub Heading"
+    expected = "```\n# Sub Heading\n```\n## Sub Heading"
+    assert fix_headings(text, str(pdf), 1, scale) == expected
