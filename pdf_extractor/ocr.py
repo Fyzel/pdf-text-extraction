@@ -361,6 +361,9 @@ def _ocr_page_with_retry(
         dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
         include_comments: When ``True`` and a source PDF is available, append the
             page's text-bearing annotations as a ``## Comments`` section.
+        heading_scale: Document-wide heading size ranking from
+            ``extract_heading_scale``; passed through to ``fix_headings`` to
+            relevel the page's headings. ``None`` or empty leaves headings as-is.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
