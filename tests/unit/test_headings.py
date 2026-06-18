@@ -58,6 +58,19 @@ def test_scale_empty_for_textless_pdf(tmp_path):
     assert extract_heading_scale(str(pdf)) == []
 
 
+def test_scale_empty_for_missing_pdf(tmp_path):
+    # A missing/unreadable PDF path must not raise — it yields an empty scale.
+    missing = tmp_path / "does-not-exist.pdf"
+    assert extract_heading_scale(str(missing)) == []
+
+
+def test_scale_empty_for_unreadable_pdf(tmp_path):
+    # A file that is not a valid PDF must not raise — it yields an empty scale.
+    bad = tmp_path / "garbage.pdf"
+    bad.write_bytes(b"this is not a pdf")
+    assert extract_heading_scale(str(bad)) == []
+
+
 # ---------------------------------------------------------------------------
 # fix_headings — relevel / promote / demote
 # ---------------------------------------------------------------------------
