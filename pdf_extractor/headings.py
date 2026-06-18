@@ -92,8 +92,9 @@ def extract_heading_scale(pdf_path: str) -> list[float]:
         Heading sizes in descending order. Empty if the PDF has no extractable
         text (e.g. scanned/image-only) or no text larger than body.
     """
-    doc: fitz.Document = fitz.open(pdf_path)
+    doc: fitz.Document | None = None
     try:
+        doc = fitz.open(pdf_path)
         sizes: collections.Counter = _doc_span_sizes(doc)
         if not sizes:
             return []
@@ -103,13 +104,15 @@ def extract_heading_scale(pdf_path: str) -> list[float]:
     except Exception:  # noqa: BLE001 — never let heading extraction fail a page
         return []
     finally:
-        doc.close()
+        if doc is not None:
+            doc.close()
 
 
 def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tuple[str, int]]:
     """Return ``(normalised_text, level)`` for each heading line on a page."""
-    doc: fitz.Document = fitz.open(pdf_path)
+    doc: fitz.Document | None = None
     try:
+        doc = fitz.open(pdf_path)
         page: fitz.Page = doc[page_num - 1]
         result: list[tuple[str, int]] = []
         for block in page.get_text("dict")["blocks"]:
@@ -123,7 +126,8 @@ def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tup
     except Exception:  # noqa: BLE001
         return []
     finally:
-        doc.close()
+        if doc is not None:
+            doc.close()
 
 
 def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:
