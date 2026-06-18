@@ -25,7 +25,11 @@ def _make_pdf(path: Path, pages: int = 3) -> None:
     doc.close()
 
 
-def _start_mock(port: int) -> HTTPServer:
+def _start_mock() -> HTTPServer:
+    """Start a mock Ollama server on an OS-allocated port (avoids collisions).
+
+    Read the chosen port from ``server.server_address[1]``.
+    """
     body = json.dumps({"text": "resumed page", "diagrams": []})
 
     class Handler(BaseHTTPRequestHandler):
@@ -50,7 +54,7 @@ def _start_mock(port: int) -> HTTPServer:
         def log_message(self, *a):
             pass
 
-    server = HTTPServer(("127.0.0.1", port), Handler)
+    server = HTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
@@ -107,8 +111,8 @@ def test_resume_phase2_partial(tmp_path, monkeypatch):
 def test_resume_combined_done_exits_0(tmp_path, monkeypatch):
     """combined_done=True → run() returns 0 without any processing."""
     monkeypatch.chdir(tmp_path)
-    port = 19560
-    server = _start_mock(port)
+    server = _start_mock()
+    port = server.server_address[1]
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"
@@ -135,8 +139,8 @@ def test_resume_combined_done_exits_0(tmp_path, monkeypatch):
 def test_state_mismatch_page_count_exits_8(tmp_path, monkeypatch):
     """A state.json whose page count no longer matches the PDF → run() returns 8."""
     monkeypatch.chdir(tmp_path)
-    port = 19562
-    server = _start_mock(port)
+    server = _start_mock()
+    port = server.server_address[1]
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"
@@ -159,8 +163,8 @@ def test_state_mismatch_page_count_exits_8(tmp_path, monkeypatch):
 def test_resume_phase3_reruns_if_not_combined(tmp_path, monkeypatch):
     """combined_done=False but all OCR done → Phase 3 re-runs, output regenerated."""
     monkeypatch.chdir(tmp_path)
-    port = 19561
-    server = _start_mock(port)
+    server = _start_mock()
+    port = server.server_address[1]
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"

@@ -72,7 +72,8 @@ def test_load_mismatched_page_count_raises(tmp_path):
 
 
 def test_load_mismatched_pdf_path_raises(tmp_path):
-    # state.json belongs to fake.pdf; a different file with the same stem reuses it.
+    # state.json belongs to fake.pdf; a different PDF path is supplied for the
+    # same output_dir (e.g. a foreign or moved state.json).
     _make_sm(tmp_path)
     sm2 = StateManager(tmp_path)
     with pytest.raises(StateMismatchError):
