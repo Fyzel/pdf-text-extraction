@@ -64,8 +64,9 @@ Note: `ollama-dev.json` is the dev tooling config (gemma4). `ollama.json` is the
 
 **Commit messages** — `.git/hooks/prepare-commit-msg` fires on every `git commit`. Generates title (≤100 chars) + body from staged diff, prepended to any message you typed. Skips on merge, squash, `git commit -m`, and empty diff.
 
-**PR creation** — `bin/create-pr` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`.
+**PR creation** — `bin/create-pr [remote-branch]` generates title (≤72 chars) + body from commit log and diff, then calls `gh pr create`. Requires `gh`. The target branch may be passed as the first argument; omit it to pick interactively from the remote branch list.
 
 ```sh
-bin/create-pr
+bin/create-pr        # prompt for target branch
+bin/create-pr dev    # target dev, no prompt
 ```
