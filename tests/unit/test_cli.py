@@ -195,14 +195,14 @@ def test_parse_args_rerun_pages_space():
 
 
 def test_parse_args_rerun_pages_equals():
-    pdf, _, _, rerun, err = _parse_args(["--rerun-pages=2-4", "doc.pdf"])
+    pdf, _, _, _, rerun, err = _parse_args(["--rerun-pages=2-4", "doc.pdf"])
     assert pdf == "doc.pdf"
     assert rerun == {2, 3, 4}
     assert err is None
 
 
 def test_parse_args_rerun_pages_default_none():
-    pdf, _, _, rerun, err = _parse_args(["doc.pdf"])
+    pdf, _, _, _, rerun, err = _parse_args(["doc.pdf"])
     assert rerun is None
     assert err is None
 
