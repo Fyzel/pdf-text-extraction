@@ -105,7 +105,10 @@ def extract_heading_scale(pdf_path: str) -> list[float]:
         return []
     finally:
         if doc is not None:
-            doc.close()
+            try:
+                doc.close()
+            except Exception:  # noqa: BLE001 — cleanup must not break the guarantee
+                pass
 
 
 def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tuple[str, int]]:
@@ -127,7 +130,10 @@ def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tup
         return []
     finally:
         if doc is not None:
-            doc.close()
+            try:
+                doc.close()
+            except Exception:  # noqa: BLE001 — cleanup must not break the guarantee
+                pass
 
 
 def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:

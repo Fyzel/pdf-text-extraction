@@ -363,7 +363,9 @@ def _ocr_page_with_retry(
             page's text-bearing annotations as a ``## Comments`` section.
         heading_scale: Document-wide heading size ranking from
             ``extract_heading_scale``; passed through to ``fix_headings`` to
-            relevel the page's headings. ``None`` or empty leaves headings as-is.
+            relevel the page's headings. Only takes effect when ``pdf_path`` is
+            also supplied; ``fix_headings`` no-ops without a PDF. ``None`` or
+            empty leaves headings as-is.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
