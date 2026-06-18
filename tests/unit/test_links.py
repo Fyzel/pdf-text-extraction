@@ -126,6 +126,23 @@ def test_splice_skips_inline_code_span():
     assert out == "`example` then [example](https://e.test)"
 
 
+def test_splice_escapes_parens_in_uri():
+    # Wikipedia-style URLs with parentheses must not truncate the destination.
+    out = splice_links("see x now", [("x", "https://e.test/a_(b)")])
+    assert out == r"see [x](https://e.test/a_\(b\)) now"
+
+
+def test_splice_escapes_brackets_in_anchor():
+    # Brackets in the anchor must not break the [...] text span.
+    out = splice_links("a [b] c", [("[b]", "https://e.test")])
+    assert out == r"a [\[b\]](https://e.test) c"
+
+
+def test_splice_escapes_backslash():
+    out = splice_links("path here", [("path", "https://e.test/a\\b")])
+    assert out == "[path](https://e.test/a\\\\b) here"
+
+
 def test_splice_duplicate_anchor_consumed_in_order():
     text = "link and link again"
     out = splice_links(

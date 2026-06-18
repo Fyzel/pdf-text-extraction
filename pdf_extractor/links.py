@@ -23,6 +23,37 @@ import fitz
 _PROTECTED = re.compile(r"\[[^\]]*\]\([^)]*\)|`[^`]*`")
 
 
+def _escape_anchor(text: str) -> str:
+    """Escape characters that would break a Markdown link's ``[...]`` text.
+
+    Backslashes are escaped first so the escapes added for ``[`` and ``]`` are
+    not themselves doubled.
+
+    Args:
+        text: Raw anchor text.
+
+    Returns:
+        Anchor text safe to place inside ``[...]``.
+    """
+    return text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _escape_uri(uri: str) -> str:
+    """Escape characters that would break a Markdown link's ``(...)`` target.
+
+    Unbalanced parentheses (common in e.g. Wikipedia URLs) would otherwise
+    truncate the destination; CommonMark renders ``\\(`` / ``\\)`` as literal
+    parentheses, keeping the URL intact.
+
+    Args:
+        uri: Raw link target.
+
+    Returns:
+        URI safe to place inside ``(...)``.
+    """
+    return uri.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
 def extract_links(pdf_path: str, page_num: int) -> list[tuple[str, str]]:
     """Extract a page's external URI links as ``(anchor_text, uri)`` pairs.
 
@@ -92,7 +123,7 @@ def _splice_plain(segment: str, pending: list[tuple[str, str]]) -> str:
             break
         anchor, uri = pending.pop(best_idx)
         out.append(segment[cursor:best_pos])
-        out.append(f"[{anchor}]({uri})")
+        out.append(f"[{_escape_anchor(anchor)}]({_escape_uri(uri)})")
         cursor = best_pos + len(anchor)
     out.append(segment[cursor:])
     return "".join(out)
