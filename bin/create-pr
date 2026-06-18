@@ -1,13 +1,17 @@
 #!/usr/bin/env sh
 # bin/create-pr
 
-# Prompt user to select target branch
-echo "Available remote branches:"
-git branch -r | grep -v 'HEAD' | sed 's|origin/||' | sed 's/^[[:space:]]*/  /'
-printf "Target branch for PR: "
-read -r BASE_BRANCH
+# Determine target branch: use the first argument if given, else prompt.
+BASE_BRANCH="$1"
+if [ -z "$BASE_BRANCH" ]; then
+  echo "Available remote branches:"
+  git branch -r | grep -v 'HEAD' | sed 's|origin/||' | sed 's/^[[:space:]]*/  /'
+  printf "Target branch for PR: "
+  read -r BASE_BRANCH
+fi
 if [ -z "$BASE_BRANCH" ]; then
   echo "Error: no target branch specified." >&2
+  echo "Usage: bin/create-pr [remote-branch]" >&2
   exit 1
 fi
 if ! git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then

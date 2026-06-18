@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r \".tool_input.file_path // empty\" | tr \"\\\\\\\\\" \"/\"); case \"$f\" in */pdf_extractor/*.py|*/main.py) echo \"{\\\"hookSpecificOutput\\\":{\\\"hookEventName\\\":\\\"PostToolUse\\\",\\\"additionalContext\\\":\\\"Doc-sync rule: edited $f (feature/config/CLI/exit-code source). If this changed behaviour, sync README.md, CLAUDE.md, and the GitHub wiki before finishing.\\\"}}\";; esac",
+            "statusMessage": "Checking doc-sync rule"
+          }
+        ]
+      }
+    ]
+  }
+}

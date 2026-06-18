@@ -55,6 +55,48 @@ def test_load_existing_state(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# reset_pages
+# ---------------------------------------------------------------------------
+
+def test_reset_pages_clears_flags(tmp_path):
+    sm, st = _make_sm(tmp_path)
+    sm.update_page(st, 2, image_done=True, ocr_done=True, diagram_count=3)
+    sm.reset_pages(st, [2])
+    pg = st.pages["2"]
+    assert not pg.image_done
+    assert not pg.image_failed
+    assert not pg.ocr_done
+    assert not pg.ocr_failed
+    assert pg.diagram_count == 0
+
+
+def test_reset_pages_clears_combined_done(tmp_path):
+    sm, st = _make_sm(tmp_path)
+    sm.mark_combined_done(st)
+    assert st.combined_done
+    sm.reset_pages(st, [1])
+    assert not st.combined_done
+
+
+def test_reset_pages_leaves_other_pages(tmp_path):
+    sm, st = _make_sm(tmp_path)
+    sm.update_page(st, 1, image_done=True, ocr_done=True)
+    sm.update_page(st, 3, image_done=True, ocr_done=True)
+    sm.reset_pages(st, [3])
+    assert st.pages["1"].image_done and st.pages["1"].ocr_done
+    assert not st.pages["3"].image_done and not st.pages["3"].ocr_done
+
+
+def test_reset_pages_persists(tmp_path):
+    sm, st = _make_sm(tmp_path)
+    sm.update_page(st, 2, image_done=True, ocr_done=True)
+    sm.reset_pages(st, [2])
+    st2 = StateManager(tmp_path).load_or_init(tmp_path / "fake.pdf", page_count=3)
+    assert not st2.pages["2"].image_done
+    assert not st2.combined_done
+
+
+# ---------------------------------------------------------------------------
 # Status detection
 # ---------------------------------------------------------------------------
 

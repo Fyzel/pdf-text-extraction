@@ -11,7 +11,9 @@ import fitz
 
 from pdf_extractor.annotations import extract_comments_markdown
 from pdf_extractor.config import OllamaInstance
+from pdf_extractor.headings import extract_heading_scale, fix_headings
 from pdf_extractor.mdlint import normalize_markdown
+from pdf_extractor.reflow import reflow_prose
 from pdf_extractor.render import _DPI_SCALE
 from pdf_extractor.tables import extract_tables_markdown, splice_tables
 from pdf_extractor.state import AppState, StateManager
@@ -34,6 +36,9 @@ Analyze this document page image. Return ONLY a valid JSON object with this exac
 
 Rules:
 - text: include ALL text, formatted as markdown (headings, lists, bold, italics). Use plain paragraphs for regular text — do NOT use blockquote syntax (>).
+- Write each paragraph as a SINGLE line. Do not insert line breaks inside a paragraph to mirror how the text wraps in the image.
+- Do NOT wrap text in emphasis markers (* or _) unless it is visually bold or italic. Regular body text must have no emphasis.
+- Use heading markup (#, ##, ###) only for actual headings, matching the visual hierarchy. Ordinary body sentences are never headings.
 - diagrams: pixel bounding boxes for figures, charts, illustrations only. Empty array if none. Boxes must be tight — no surrounding whitespace, margins, or text. Do not pad or expand beyond the visible edge of the figure.
 - tables: render as markdown table syntax inside the text field. Do NOT add tables to diagrams.
 - Return ONLY the JSON object. No explanations, no code fences, no other text.\
@@ -326,6 +331,7 @@ def _ocr_page_with_retry(
     pdf_path: Path | None = None,
     dpi_scale: float = _DPI_SCALE,
     include_comments: bool = False,
+    heading_scale: list[float] | None = None,
 ) -> tuple[int, bool, str, int]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
@@ -355,6 +361,11 @@ def _ocr_page_with_retry(
         dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
         include_comments: When ``True`` and a source PDF is available, append the
             page's text-bearing annotations as a ``## Comments`` section.
+        heading_scale: Document-wide heading size ranking from
+            ``extract_heading_scale``; passed through to ``fix_headings`` to
+            relevel the page's headings. Only takes effect when ``pdf_path`` is
+            also supplied; ``fix_headings`` no-ops without a PDF. ``None`` or
+            empty leaves headings as-is.
 
     Returns:
         Tuple of ``(page_num, success, error_message, diagram_count)``.
@@ -391,7 +402,18 @@ def _ocr_page_with_retry(
             last_error = f"{instance.url}: {exc}"
             continue
 
-        page_text: str = normalize_markdown(str(data.get("text", "")))
+        # Clean up the model's markdown before any PDF-sourced splicing:
+        # 1) correct heading levels from the PDF font hierarchy (must run first,
+        #    while a mis-flattened heading is still on its own line),
+        # 2) reflow soft-wrapped prose and strip stray paragraph emphasis,
+        # 3) normalise list markup.
+        page_text: str = str(data.get("text", ""))
+        page_text = fix_headings(
+            page_text, str(pdf_path) if pdf_path is not None else None,
+            page_num, heading_scale or [],
+        )
+        page_text = reflow_prose(page_text)
+        page_text = normalize_markdown(page_text)
         # Replace the model's unreliable table transcription with tables read
         # straight from the PDF, when a source PDF is available.
         if pdf_path is not None:
@@ -492,14 +514,23 @@ def run_phase2(
     diagrams_dir: Path = output_dir / "diagrams"
     n: int = len(instances)
 
+    # Build the document-wide heading size ranking once; workers reuse it to
+    # correct per-page heading levels consistently.
+    heading_scale: list[float] = (
+        extract_heading_scale(str(pdf_path)) if pdf_path is not None else []
+    )
+
     def _args(
         page_num: int,
-    ) -> tuple[int, list[OllamaInstance], Path, Path, int, int, Path | None, float, bool]:
+    ) -> tuple[
+        int, list[OllamaInstance], Path, Path, int, int, Path | None, float, bool,
+        list[float],
+    ]:
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
         return (
             page_num, ordered, pages_dir, diagrams_dir, page_count,
-            ocr_timeout, pdf_path, dpi_scale, include_comments,
+            ocr_timeout, pdf_path, dpi_scale, include_comments, heading_scale,
         )
 
     with ThreadPoolExecutor(max_workers=n) as executor:
