@@ -10,7 +10,7 @@ Full pipeline implemented and tested. `main.py` is the entry point. Core modules
 |--------|---------|
 | `config.py` | Load `ollama.json`, fallback defaults, validate schema |
 | `health.py` | Probe Ollama instances via `GET /api/tags` |
-| `state.py` | Thread-safe `state.json` read/write with atomic rename |
+| `state.py` | Thread-safe `state.json` read/write with atomic rename; `load_or_init` validates an existing `state.json` against the current PDF path + page count, raising `StateMismatchError` on mismatch (exit 8) |
 | `render.py` | Phase 1 — PDF→JPEG via PyMuPDF, `ProcessPoolExecutor` |
 | `ocr.py` | Phase 2 — Ollama OCR, diagram crop, round-robin + retry; skips blank pages (hybrid text/drawing + pixel-whiteness check) before any OCR call; per page, corrects heading levels via `headings`, reflows prose + strips stray emphasis via `reflow`, normalises list markdown via `mdlint`, replaces model tables with PDF-extracted tables via `tables`, (with `--include-links`) rewrites plain anchor text as Markdown links via `links`, and (with `--include-comments`) appends PDF annotations via `annotations` before writing |
 | `headings.py` | Phase 2 helper — derive a document-wide heading size→level scale from PDF font spans (`get_text("dict")`), then per page relevel/promote/demote model headings to match the PDF hierarchy; opt-out when the PDF has no heading scale (scanned) |
@@ -20,7 +20,7 @@ Full pipeline implemented and tested. `main.py` is the entry point. Core modules
 | `links.py` | Phase 2 helper — extract external URI hyperlinks from the PDF via PyMuPDF `page.get_links()`, recover each link's anchor text, splice `[text](uri)` over the matching plain text; skips fenced code, table rows, and existing links; opt-in via `--include-links` |
 | `annotations.py` | Phase 2 helper — extract text-bearing PDF annotations (comments) via PyMuPDF `page.annots()`, render as a `## Comments` section; opt-in via `--include-comments` |
 | `combine.py` | Phase 3 — merge per-page `.md` into single output file |
-| `cli.py` | Entry point, phases 1–3, exit codes 0–7; flags `--dpi-scale N`, `--include-comments`, `--include-links`, and `--rerun-pages SPEC` (e.g. `3,5,7-9`) which archives a selected page's image/diagrams/markdown and the combined output under `<stem>/_archive/vN/` (moved, not deleted), resets their state via `StateManager.reset_pages`, then reprocesses and reassembles |
+| `cli.py` | Entry point, phases 1–3, exit codes 0–8 (8 = existing `state.json` does not match the current PDF path/page count); flags `--dpi-scale N`, `--include-comments`, `--include-links`, and `--rerun-pages SPEC` (e.g. `3,5,7-9`) which archives a selected page's image/diagrams/markdown and the combined output under `<stem>/_archive/vN/` (moved, not deleted), resets their state via `StateManager.reset_pages`, then reprocesses and reassembles |
 
 Test suite: `tests/` — unit, integration, and e2e layers. Run with `pytest tests/`.
 

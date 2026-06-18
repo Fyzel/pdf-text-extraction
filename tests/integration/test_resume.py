@@ -132,6 +132,30 @@ def test_resume_combined_done_exits_0(tmp_path, monkeypatch):
         server.shutdown()
 
 
+def test_state_mismatch_page_count_exits_8(tmp_path, monkeypatch):
+    """A state.json whose page count no longer matches the PDF → run() returns 8."""
+    monkeypatch.chdir(tmp_path)
+    port = 19562
+    server = _start_mock(port)
+    cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
+    (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf, pages=1)
+
+    try:
+        # first run to completion writes state.json for a 1-page document
+        with patch.object(sys, "argv", ["main.py", str(pdf)]):
+            assert run() == 0
+
+        # the PDF at the same path is replaced by a 2-page document
+        _make_pdf(pdf, pages=2)
+
+        with patch.object(sys, "argv", ["main.py", str(pdf)]):
+            assert run() == 8
+    finally:
+        server.shutdown()
+
+
 def test_resume_phase3_reruns_if_not_combined(tmp_path, monkeypatch):
     """combined_done=False but all OCR done → Phase 3 re-runs, output regenerated."""
     monkeypatch.chdir(tmp_path)
