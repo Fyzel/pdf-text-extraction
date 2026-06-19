@@ -178,3 +178,41 @@ def test_corrects_heading_after_closed_fence(tmp_path):
     text = "```\n# Sub Heading\n```\n# Sub Heading"
     expected = "```\n# Sub Heading\n```\n## Sub Heading"
     assert fix_headings(text, str(pdf), 1, scale) == expected
+
+
+def test_different_marker_does_not_close_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # A ~~~ line inside a ```-opened block must not close it; the heading-like
+    # line that follows is still code and must stay verbatim.
+    text = "```\n~~~\n# Sub Heading\n```"
+    assert fix_headings(text, str(pdf), 1, scale) == text
+
+
+def test_shorter_marker_does_not_close_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # Closing run must be at least as long as the opening run (4 backticks).
+    text = "````\n```\n# Sub Heading\n````"
+    assert fix_headings(text, str(pdf), 1, scale) == text
+
+
+def test_info_string_does_not_close_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # A fence line carrying extra text is not a valid close — still inside code.
+    text = "```\n``` not a close\n# Sub Heading\n```"
+    assert fix_headings(text, str(pdf), 1, scale) == text
+
+
+def test_longer_marker_closes_fence(tmp_path):
+    pdf = tmp_path / "doc.pdf"
+    _make_pdf(pdf)
+    scale = extract_heading_scale(str(pdf))
+    # A longer same-char run is a valid close; the heading after it is corrected.
+    text = "```\n# Sub Heading\n`````\n# Sub Heading"
+    expected = "```\n# Sub Heading\n`````\n## Sub Heading"
+    assert fix_headings(text, str(pdf), 1, scale) == expected

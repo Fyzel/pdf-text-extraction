@@ -22,7 +22,7 @@ _LIST_RE = re.compile(
 )
 _TABLE_RE = re.compile(r"^[ \t]*\|")
 _QUOTE_RE = re.compile(r"^[ \t]*>")
-_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
+_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _HR_RE = re.compile(r"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 
 # A paragraph fully wrapped in a single run of 1–3 ``*`` or ``_`` with no
