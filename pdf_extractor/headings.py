@@ -149,7 +149,7 @@ def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:
     return best_level
 
 
-def _closes_fence(line: str, opening: str) -> bool:
+def _closes_fence(run: str, line: str, opening: str) -> bool:
     """Return True if ``line`` is a valid CommonMark close for ``opening``.
 
     A closing fence uses the same character as the opening run, is at least as
@@ -157,10 +157,10 @@ def _closes_fence(line: str, opening: str) -> bool:
     whitespace).
 
     Args:
+        run: The fence run captured from ``line`` (group 1 of :data:`_FENCE_RE`).
         line: Candidate line, already known to match :data:`_FENCE_RE`.
         opening: The opening fence run (e.g. ```` ``` ```` or ``~~~~``).
     """
-    run: str = _FENCE_RE.match(line).group(1)  # type: ignore[union-attr]
     return run[0] == opening[0] and len(run) >= len(opening) and line.strip() == run
 
 
@@ -199,10 +199,12 @@ def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[flo
     out: list[str] = []
     fence: str | None = None  # opening fence run while inside a code block
     for line in text.split("\n"):
-        if _FENCE_RE.match(line):
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
+            run: str = fence_match.group(1)
             if fence is None:
-                fence = _FENCE_RE.match(line).group(1)  # type: ignore[union-attr]
-            elif _closes_fence(line, fence):
+                fence = run
+            elif _closes_fence(run, line, fence):
                 fence = None
             out.append(line)
             continue
