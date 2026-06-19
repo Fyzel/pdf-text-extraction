@@ -8,6 +8,16 @@ from typing import Literal
 _STATE_FILENAME: str = "state.json"
 
 
+class StateMismatchError(Exception):
+    """Raised when an existing ``state.json`` does not match the current PDF.
+
+    Guards ``--rerun-pages`` and resume against a stale or foreign ``state.json``
+    (e.g. a different document with the same file stem, or a PDF whose page count
+    changed since the prior run), which would otherwise raise ``KeyError`` while
+    indexing :attr:`AppState.pages` or silently reprocess the wrong document.
+    """
+
+
 @dataclass
 class PageState:
     """Per-page processing status tracked in state.json.
@@ -68,15 +78,26 @@ class StateManager:
     def load_or_init(self, pdf_path: Path, page_count: int) -> AppState:
         """Load ``state.json`` if it exists, otherwise create and persist a fresh state.
 
+        A pre-existing ``state.json`` is validated against the current PDF: its
+        stored absolute path and page count must match. On a mismatch a
+        :class:`StateMismatchError` is raised rather than returning state that
+        belongs to a different (or changed) document.
+
         Args:
             pdf_path: Path to the source PDF; stored as an absolute path.
             page_count: Total number of pages in the PDF.
 
         Returns:
             Loaded or freshly initialised AppState.
+
+        Raises:
+            StateMismatchError: The existing ``state.json`` describes a different
+                PDF path or a different page count than the current run.
         """
         if self._path.is_file():
-            return self._load()
+            loaded: AppState = self._load()
+            self._validate(loaded, pdf_path, page_count)
+            return loaded
         state: AppState = AppState(
             pdf_path=str(pdf_path.resolve()),
             page_count=page_count,
@@ -155,6 +176,32 @@ class StateManager:
             if page.image_done or page.image_failed or page.ocr_done or page.ocr_failed:
                 return "partial"
         return "not_started"
+
+    def _validate(self, state: AppState, pdf_path: Path, page_count: int) -> None:
+        """Verify a loaded state matches the current PDF, or raise.
+
+        Args:
+            state: AppState deserialised from an existing ``state.json``.
+            pdf_path: Path to the PDF for the current run.
+            page_count: Page count discovered for the current run.
+
+        Raises:
+            StateMismatchError: The stored absolute PDF path or page count does
+                not match the current run.
+        """
+        current_path: str = str(pdf_path.resolve())
+        if state.pdf_path != current_path:
+            raise StateMismatchError(
+                f"{self._path} belongs to a different PDF "
+                f"({state.pdf_path!r}, not {current_path!r}). "
+                f"Remove {self._path} to start a fresh run."
+            )
+        if state.page_count != page_count:
+            raise StateMismatchError(
+                f"{self._path} page count ({state.page_count}) does not match the "
+                f"current PDF ({page_count}); the PDF may have changed. "
+                f"Remove {self._path} to start a fresh run."
+            )
 
     def _load(self) -> AppState:
         """Deserialise ``state.json`` from disk into an AppState.

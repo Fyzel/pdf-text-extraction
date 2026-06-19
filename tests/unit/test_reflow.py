@@ -55,6 +55,19 @@ def test_code_fence_content_untouched():
     assert reflow_prose(src) == src
 
 
+def test_different_marker_does_not_reopen_reflow():
+    # A ~~~ line inside a ```-opened block must not close it; the lines after it
+    # are still code and must stay on their own lines, not be reflowed.
+    src = "```\n~~~\nsoft line one\nsoft line two\n```"
+    assert reflow_prose(src) == src
+
+
+def test_shorter_marker_does_not_reopen_reflow():
+    # Closing run must be at least as long as the 4-backtick opening run.
+    src = "````\n```\nsoft line one\nsoft line two\n````"
+    assert reflow_prose(src) == src
+
+
 def test_thematic_break_untouched():
     assert reflow_prose("text above\n\n---\n\ntext below") == "text above\n\n---\n\ntext below"
 

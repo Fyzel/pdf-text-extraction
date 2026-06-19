@@ -10,11 +10,11 @@ from pdf_extractor.config import AppConfig, OllamaInstance, load_config
 from pdf_extractor.health import probe_instances
 from pdf_extractor.ocr import _page_stem, run_phase2
 from pdf_extractor.render import _DPI_SCALE, get_page_count, render_pages
-from pdf_extractor.state import AppState, StateManager
+from pdf_extractor.state import AppState, StateManager, StateMismatchError
 
 _USAGE: str = (
     "Usage: python main.py <pdf_path> [--dpi-scale N] [--include-comments] "
-    "[--rerun-pages SPEC]"
+    "[--include-links] [--rerun-pages SPEC]"
 )
 _HELP: str = f"""\
 {_USAGE}
@@ -28,6 +28,8 @@ Arguments:
                       the cost of size and render time. Also accepts --dpi-scale=N.
   --include-comments  Append PDF comment annotations (sticky notes, highlight
                       notes, etc.) to each page as a "## Comments" section.
+  --include-links     Rewrite plain text as Markdown links using the PDF's
+                      embedded URI hyperlinks (e.g. [text](https://...)).
   --rerun-pages SPEC  Reprocess specific pages from a previous run. SPEC is a
                       comma-separated list of page numbers and/or N-M ranges,
                       e.g. "3,5,7-9". The page image, diagrams, per-page markdown,
@@ -89,19 +91,21 @@ def _parse_page_spec(raw: str) -> set[int]:
 
 def _parse_args(
     argv: list[str],
-) -> tuple[str | None, float, bool, set[int] | None, str | None]:
+) -> tuple[str | None, float, bool, bool, set[int] | None, str | None]:
     """Parse CLI arguments into a PDF path, render scale, and flags.
 
     Accepts one positional PDF path, an optional ``--dpi-scale N`` (or
     ``--dpi-scale=N``) flag controlling the Phase 1 render resolution, an
-    optional ``--include-comments`` flag, and an optional ``--rerun-pages SPEC``
-    (or ``--rerun-pages=SPEC``) flag listing pages to reprocess.
+    optional ``--include-comments`` flag, an optional ``--include-links`` flag,
+    and an optional ``--rerun-pages SPEC`` (or ``--rerun-pages=SPEC``) flag
+    listing pages to reprocess.
 
     Args:
         argv: Argument list excluding the program name (``sys.argv[1:]``).
 
     Returns:
-        Tuple of ``(pdf_path, dpi_scale, include_comments, rerun_pages, error)``.
+        Tuple of ``(pdf_path, dpi_scale, include_comments, include_links,
+        rerun_pages, error)``.
         On success ``error`` is ``None``; on a parse error ``pdf_path`` is
         ``None`` and ``error`` holds a message. ``dpi_scale`` defaults to the
         module default when absent; ``rerun_pages`` is ``None`` when the flag is
@@ -110,10 +114,11 @@ def _parse_args(
     pdf_path: str | None = None
     dpi_scale: float = _DPI_SCALE
     include_comments: bool = False
+    include_links: bool = False
     rerun_pages: set[int] | None = None
 
-    def _err(msg: str) -> tuple[None, float, bool, set[int] | None, str]:
-        return None, dpi_scale, include_comments, rerun_pages, msg
+    def _err(msg: str) -> tuple[None, float, bool, bool, set[int] | None, str]:
+        return None, dpi_scale, include_comments, include_links, rerun_pages, msg
 
     i: int = 0
     while i < len(argv):
@@ -146,13 +151,15 @@ def _parse_args(
                 return _err(f"invalid --rerun-pages value: {exc}")
         elif arg == "--include-comments":
             include_comments = True
+        elif arg == "--include-links":
+            include_links = True
         elif pdf_path is None:
             pdf_path = arg
         else:
             return _err(f"unexpected argument: {arg}")
         i += 1
 
-    return pdf_path, dpi_scale, include_comments, rerun_pages, None
+    return pdf_path, dpi_scale, include_comments, include_links, rerun_pages, None
 
 
 def _next_archive_dir(output_dir: Path) -> Path:
@@ -247,6 +254,8 @@ def run() -> int:
         - ``5``: All pages failed image rendering.
         - ``6``: All rendered pages failed OCR.
         - ``7``: Combined output file write failed.
+        - ``8``: Existing state.json does not match the current PDF (different
+          path or page count).
     """
     if any(a in ("-h", "--help") for a in sys.argv[1:]):
         print(_HELP)
@@ -255,9 +264,12 @@ def run() -> int:
     pdf_arg: str | None
     dpi_scale: float
     include_comments: bool
+    include_links: bool
     rerun_pages: set[int] | None
     arg_err: str | None
-    pdf_arg, dpi_scale, include_comments, rerun_pages, arg_err = _parse_args(sys.argv[1:])
+    pdf_arg, dpi_scale, include_comments, include_links, rerun_pages, arg_err = _parse_args(
+        sys.argv[1:]
+    )
     if arg_err is not None:
         print(f"Error: {arg_err}\n{_USAGE}", file=sys.stderr)
         return 1
@@ -284,6 +296,7 @@ def run() -> int:
     print(f"Render workers: {config.max_render_workers}")
     print(f"DPI scale: {dpi_scale}")
     print(f"Include comments: {include_comments}")
+    print(f"Include links: {include_links}")
     print(f"Probing {len(config.instances)} Ollama instance(s)...")
 
     live: list[OllamaInstance] = probe_instances(config.instances)
@@ -326,7 +339,11 @@ def run() -> int:
         if not in_range:
             print("Error: --rerun-pages: no valid pages to rerun", file=sys.stderr)
             return 1
-        state = state_mgr.load_or_init(pdf_path, page_count)
+        try:
+            state = state_mgr.load_or_init(pdf_path, page_count)
+        except StateMismatchError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 8
         archive_dir: Path | None = _archive_page_artifacts(
             output_dir, pdf_path, page_count, in_range,
         )
@@ -335,7 +352,11 @@ def run() -> int:
         state_mgr.reset_pages(state, in_range)
         print(f"Rerunning page(s): {', '.join(str(p) for p in in_range)}")
     else:
-        state = state_mgr.load_or_init(pdf_path, page_count)
+        try:
+            state = state_mgr.load_or_init(pdf_path, page_count)
+        except StateMismatchError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 8
 
     run_status: str = state_mgr.status(state)
     if run_status == "complete":
@@ -395,7 +416,7 @@ def run() -> int:
         run_phase2(
             output_dir, page_count, ocr_pending, config.instances,
             state, state_mgr, config.ocr_timeout, pdf_path, dpi_scale,
-            include_comments,
+            include_comments, include_links,
         )
 
     rendered_pages: list[int] = [
