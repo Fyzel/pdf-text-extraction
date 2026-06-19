@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Test
+    name: CI Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read

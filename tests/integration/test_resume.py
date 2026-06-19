@@ -1,68 +1,28 @@
 """Integration tests for resumability via state.json."""
 import json
 import sys
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
-import fitz
-import pytest
-
 from pdf_extractor.cli import run
-from pdf_extractor.render import render_pages, get_page_count
+from pdf_extractor.render import render_pages
 from pdf_extractor.state import StateManager
+from tests.helpers import make_text_pdf
+from tests.ollama_mock import start_ollama_mock
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 
 
-def _make_pdf(path: Path, pages: int = 3) -> None:
-    doc = fitz.open()
-    for i in range(pages):
-        pg = doc.new_page(width=595, height=842)
-        pg.insert_text((72, 100), f"Page {i + 1}")
-    doc.save(str(path))
-    doc.close()
-
-
-def _start_mock() -> HTTPServer:
-    """Start a mock Ollama server on an OS-allocated port (avoids collisions).
-
-    Read the chosen port from ``server.server_address[1]``.
-    """
-    body = json.dumps({"text": "resumed page", "diagrams": []})
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            resp = json.dumps({"models": []}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", len(resp))
-            self.end_headers()
-            self.wfile.write(resp)
-
-        def do_POST(self):
-            length = int(self.headers.get("Content-Length", 0))
-            self.rfile.read(length)
-            payload = json.dumps({"response": body}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", len(payload))
-            self.end_headers()
-            self.wfile.write(payload)
-
-        def log_message(self, *a):
-            pass
-
-    server = HTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
-
-
 def test_resume_phase1_partial(tmp_path):
-    """Pages already image_done are skipped on second pass."""
+    """Pages already marked ``image_done`` are excluded from Phase 1 pending.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf, pages=3)
+    make_text_pdf(pdf, pages=3)
     out = tmp_path / "doc"
     out.mkdir()
     pages_dir = out / "pages"
@@ -71,7 +31,7 @@ def test_resume_phase1_partial(tmp_path):
     st = sm.load_or_init(pdf, 3)
 
     # pre-render page 1 manually
-    results = render_pages(pdf, pages_dir, 3, [1], max_workers=1)
+    render_pages(pdf, pages_dir, 3, [1], max_workers=1)
     sm.update_page(st, 1, image_done=True)
 
     # pending for phase 1 should exclude page 1
@@ -84,10 +44,16 @@ def test_resume_phase1_partial(tmp_path):
     assert 3 in pending
 
 
-def test_resume_phase2_partial(tmp_path, monkeypatch):
-    """Pages already ocr_done are skipped; no re-rendering happens."""
+def test_resume_phase2_partial(tmp_path):
+    """Pages already marked ``ocr_done`` are excluded from Phase 2 pending.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf, pages=2)
+    make_text_pdf(pdf, pages=2)
     out = tmp_path / "doc"
     out.mkdir()
 
@@ -109,14 +75,22 @@ def test_resume_phase2_partial(tmp_path, monkeypatch):
 
 
 def test_resume_combined_done_exits_0(tmp_path, monkeypatch):
-    """combined_done=True → run() returns 0 without any processing."""
+    """A completed run exits ``0`` on re-invocation without reprocessing.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
-    server = _start_mock()
+    server = start_ollama_mock(0, {"text": "resumed page", "diagrams": []})
     port = server.server_address[1]
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf, pages=1)
+    make_text_pdf(pdf, pages=1)
 
     try:
         # first run to completion
@@ -137,14 +111,22 @@ def test_resume_combined_done_exits_0(tmp_path, monkeypatch):
 
 
 def test_state_mismatch_page_count_exits_8(tmp_path, monkeypatch):
-    """A state.json whose page count no longer matches the PDF → run() returns 8."""
+    """A state.json whose page count no longer matches the PDF makes run() exit 8.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
-    server = _start_mock()
+    server = start_ollama_mock(0, {"text": "resumed page", "diagrams": []})
     port = server.server_address[1]
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf, pages=1)
+    make_text_pdf(pdf, pages=1)
 
     try:
         # first run to completion writes state.json for a 1-page document
@@ -152,7 +134,7 @@ def test_state_mismatch_page_count_exits_8(tmp_path, monkeypatch):
             assert run() == 0
 
         # the PDF at the same path is replaced by a 2-page document
-        _make_pdf(pdf, pages=2)
+        make_text_pdf(pdf, pages=2)
 
         with patch.object(sys, "argv", ["main.py", str(pdf)]):
             assert run() == 8
@@ -161,28 +143,35 @@ def test_state_mismatch_page_count_exits_8(tmp_path, monkeypatch):
 
 
 def test_resume_phase3_reruns_if_not_combined(tmp_path, monkeypatch):
-    """combined_done=False but all OCR done → Phase 3 re-runs, output regenerated."""
+    """With OCR done but ``combined_done`` false, Phase 3 regenerates the output.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
-    server = _start_mock()
+    server = start_ollama_mock(0, {"text": "resumed page", "diagrams": []})
     port = server.server_address[1]
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf, pages=1)
+    make_text_pdf(pdf, pages=1)
 
     try:
         # full run
         with patch.object(sys, "argv", ["main.py", str(pdf)]):
             assert run() == 0
 
-        # delete combined output but leave combined_done=False
+        # clear combined_done in state.json directly, then delete the output
         out_md = tmp_path / "doc.md"
         out = tmp_path / "doc"
-        sm = StateManager(out)
-        st = sm.load_or_init(pdf, 1)
-        # reset combined_done in state
-        st.combined_done = False
-        sm._write(st)  # noqa: SLF001
+        state_path = out / "state.json"
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        data["combined_done"] = False
+        state_path.write_text(json.dumps(data), encoding="utf-8")
         out_md.unlink()
         assert not out_md.exists()
 

@@ -1,13 +1,10 @@
 """Unit tests for pdf_extractor/cli.py — argument parsing and exit codes."""
-import sys
 import json
-import threading
-import pytest
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import fitz
+import pytest
 
 from pdf_extractor.cli import (
     _archive_page_artifacts,
@@ -17,46 +14,8 @@ from pdf_extractor.cli import (
     run,
 )
 from pdf_extractor.render import _DPI_SCALE
-
-
-def _make_pdf(path: Path, pages: int = 1) -> None:
-    doc = fitz.open()
-    for i in range(pages):
-        pg = doc.new_page(width=595, height=842)
-        pg.insert_text((72, 100), f"Page {i + 1}")
-    doc.save(str(path))
-    doc.close()
-
-
-def _start_ollama_mock(port: int, ocr_body: dict) -> HTTPServer:
-    ocr_str = json.dumps(ocr_body)
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            # health probe
-            body = json.dumps({"models": []}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", len(body))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def do_POST(self):
-            length = int(self.headers.get("Content-Length", 0))
-            self.rfile.read(length)
-            payload = json.dumps({"response": ocr_str}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", len(payload))
-            self.end_headers()
-            self.wfile.write(payload)
-
-        def log_message(self, *a):
-            pass
-
-    server = HTTPServer(("127.0.0.1", port), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
+from tests.helpers import make_text_pdf
+from tests.ollama_mock import start_ollama_mock
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +23,11 @@ def _start_ollama_mock(port: int, ocr_body: dict) -> HTTPServer:
 # ---------------------------------------------------------------------------
 
 def test_exit1_no_argument():
+    """With no PDF argument, :func:`run` exits ``1``.
+
+    :return: ``None``.
+    :rtype: None
+    """
     with patch.object(sys, "argv", ["main.py"]):
         assert run() == 1
 
@@ -73,6 +37,11 @@ def test_exit1_no_argument():
 # ---------------------------------------------------------------------------
 
 def test_parse_args_pdf_only():
+    """A lone PDF path parses with the default DPI scale and no error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, dpi, _, _, _, err = _parse_args(["doc.pdf"])
     assert pdf == "doc.pdf"
     assert dpi == _DPI_SCALE
@@ -80,6 +49,11 @@ def test_parse_args_pdf_only():
 
 
 def test_parse_args_dpi_scale_space():
+    """``--dpi-scale N`` (space form) sets the render scale.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, dpi, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "4.0"])
     assert pdf == "doc.pdf"
     assert dpi == 4.0
@@ -87,6 +61,11 @@ def test_parse_args_dpi_scale_space():
 
 
 def test_parse_args_dpi_scale_equals():
+    """``--dpi-scale=N`` (equals form) sets the render scale.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, dpi, _, _, _, err = _parse_args(["--dpi-scale=3.5", "doc.pdf"])
     assert pdf == "doc.pdf"
     assert dpi == 3.5
@@ -94,36 +73,66 @@ def test_parse_args_dpi_scale_equals():
 
 
 def test_parse_args_missing_value():
+    """``--dpi-scale`` with no value is a parse error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_invalid_value():
+    """A non-numeric ``--dpi-scale`` value is a parse error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "huge"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_non_positive_value():
+    """A non-positive ``--dpi-scale`` value is a parse error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--dpi-scale", "0"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_unexpected_extra():
+    """A second positional argument is a parse error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["doc.pdf", "extra.pdf"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_no_pdf():
+    """Flags without a PDF path parse cleanly with a ``None`` path.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["--dpi-scale", "2.0"])
     assert pdf is None
     assert err is None
 
 
 def test_parse_args_include_comments_default_false():
+    """``--include-comments`` defaults to ``False`` when absent.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, include_comments, _, _, err = _parse_args(["doc.pdf"])
     assert pdf == "doc.pdf"
     assert include_comments is False
@@ -131,6 +140,11 @@ def test_parse_args_include_comments_default_false():
 
 
 def test_parse_args_include_comments_flag():
+    """``--include-comments`` sets the flag to ``True``.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, include_comments, _, _, err = _parse_args(["doc.pdf", "--include-comments"])
     assert pdf == "doc.pdf"
     assert include_comments is True
@@ -138,6 +152,11 @@ def test_parse_args_include_comments_flag():
 
 
 def test_parse_args_include_comments_with_dpi():
+    """``--include-comments`` combines with ``--dpi-scale`` and a PDF path.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, dpi, include_comments, _, _, err = _parse_args(
         ["--include-comments", "--dpi-scale", "3", "doc.pdf"]
     )
@@ -148,6 +167,11 @@ def test_parse_args_include_comments_with_dpi():
 
 
 def test_parse_args_include_links_default_false():
+    """``--include-links`` defaults to ``False`` when absent.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, include_links, _, err = _parse_args(["doc.pdf"])
     assert pdf == "doc.pdf"
     assert include_links is False
@@ -155,6 +179,11 @@ def test_parse_args_include_links_default_false():
 
 
 def test_parse_args_include_links_flag():
+    """``--include-links`` sets the flag to ``True``.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, include_links, _, err = _parse_args(["doc.pdf", "--include-links"])
     assert pdf == "doc.pdf"
     assert include_links is True
@@ -166,28 +195,60 @@ def test_parse_args_include_links_flag():
 # ---------------------------------------------------------------------------
 
 def test_page_spec_single_list():
+    """A comma list of single pages parses to the matching set.
+
+    :return: ``None``.
+    :rtype: None
+    """
     assert _parse_page_spec("3,5,7") == {3, 5, 7}
 
 
 def test_page_spec_range():
+    """An ``N-M`` range parses to the inclusive set.
+
+    :return: ``None``.
+    :rtype: None
+    """
     assert _parse_page_spec("7-9") == {7, 8, 9}
 
 
 def test_page_spec_mixed():
+    """A mix of singles and ranges parses to their union.
+
+    :return: ``None``.
+    :rtype: None
+    """
     assert _parse_page_spec("3,5,7-9") == {3, 5, 7, 8, 9}
 
 
 def test_page_spec_whitespace_and_overlap():
+    """Whitespace is ignored and overlapping pages collapse in the set.
+
+    :return: ``None``.
+    :rtype: None
+    """
     assert _parse_page_spec(" 1 , 2-4 , 3 ") == {1, 2, 3, 4}
 
 
 @pytest.mark.parametrize("bad", ["", "x", "3,x", "5-", "-5", "4-2", "0", "3,0", "1-0"])
 def test_page_spec_malformed_raises(bad):
+    """A malformed page spec raises :class:`ValueError`.
+
+    :param bad: Malformed spec string under test. Required (parametrized).
+    :type bad: str
+    :return: ``None``.
+    :rtype: None
+    """
     with pytest.raises(ValueError):
         _parse_page_spec(bad)
 
 
 def test_parse_args_rerun_pages_space():
+    """``--rerun-pages SPEC`` (space form) parses to the page set.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, rerun, err = _parse_args(["doc.pdf", "--rerun-pages", "3,5,7-9"])
     assert pdf == "doc.pdf"
     assert rerun == {3, 5, 7, 8, 9}
@@ -195,6 +256,11 @@ def test_parse_args_rerun_pages_space():
 
 
 def test_parse_args_rerun_pages_equals():
+    """``--rerun-pages=SPEC`` (equals form) parses to the page set.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, rerun, err = _parse_args(["--rerun-pages=2-4", "doc.pdf"])
     assert pdf == "doc.pdf"
     assert rerun == {2, 3, 4}
@@ -202,18 +268,33 @@ def test_parse_args_rerun_pages_equals():
 
 
 def test_parse_args_rerun_pages_default_none():
-    pdf, _, _, _, rerun, err = _parse_args(["doc.pdf"])
+    """``rerun_pages`` is ``None`` when the flag is absent.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    _, _, _, _, rerun, err = _parse_args(["doc.pdf"])
     assert rerun is None
     assert err is None
 
 
 def test_parse_args_rerun_pages_missing_value():
+    """``--rerun-pages`` with no value is a parse error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--rerun-pages"])
     assert pdf is None
     assert err is not None
 
 
 def test_parse_args_rerun_pages_malformed():
+    """A malformed ``--rerun-pages`` value is a parse error.
+
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, _, _, _, _, err = _parse_args(["doc.pdf", "--rerun-pages", "3,x"])
     assert pdf is None
     assert err is not None
@@ -224,22 +305,56 @@ def test_parse_args_rerun_pages_malformed():
 # ---------------------------------------------------------------------------
 
 def test_next_archive_dir_first(tmp_path):
+    """With no archive yet, the next version directory is ``v1``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     assert _next_archive_dir(tmp_path).name == "v1"
 
 
 def test_next_archive_dir_increments(tmp_path):
+    """The next version is one past the highest existing ``vN``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     (tmp_path / "_archive" / "v1").mkdir(parents=True)
     (tmp_path / "_archive" / "v2").mkdir(parents=True)
     assert _next_archive_dir(tmp_path).name == "v3"
 
 
 def test_next_archive_dir_ignores_non_version(tmp_path):
+    """Non ``vN`` archive entries are ignored when choosing the next version.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     (tmp_path / "_archive" / "v5").mkdir(parents=True)
     (tmp_path / "_archive" / "notes").mkdir(parents=True)
     assert _next_archive_dir(tmp_path).name == "v6"
 
 
 def _seed_page_files(output_dir: Path, pdf: Path, page_count: int, page_num: int) -> None:
+    """Create page/diagram/combined artifacts for one page, for archive tests.
+
+    :param output_dir: Per-document working directory to seed. Required.
+    :type output_dir: pathlib.Path
+    :param pdf: Source PDF path (used to locate the combined output). Required.
+    :type pdf: pathlib.Path
+    :param page_count: Total page count, for the zero-padded stem. Required.
+    :type page_count: int
+    :param page_num: 1-based page number to seed. Required.
+    :type page_num: int
+    :return: ``None``.
+    :rtype: None
+    """
     stem = f"page_{page_num:0{len(str(page_count))}d}"
     (output_dir / "pages").mkdir(parents=True, exist_ok=True)
     (output_dir / "diagrams").mkdir(parents=True, exist_ok=True)
@@ -251,6 +366,13 @@ def _seed_page_files(output_dir: Path, pdf: Path, page_count: int, page_num: int
 
 
 def test_archive_moves_not_deletes(tmp_path):
+    """Archiving moves a page's artifacts into ``v1`` and removes the originals.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     out = tmp_path / "doc"
@@ -273,6 +395,13 @@ def test_archive_moves_not_deletes(tmp_path):
 
 
 def test_archive_missing_files_returns_none(tmp_path):
+    """Archiving when nothing exists to move returns ``None``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     out = tmp_path / "doc"
@@ -281,6 +410,13 @@ def test_archive_missing_files_returns_none(tmp_path):
 
 
 def test_archive_second_rerun_uses_v2(tmp_path):
+    """A second archive of the same page lands in ``v2``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"%PDF")
     out = tmp_path / "doc"
@@ -292,11 +428,23 @@ def test_archive_second_rerun_uses_v2(tmp_path):
 
 
 def test_exit1_bad_dpi_scale():
+    """An invalid ``--dpi-scale`` makes :func:`run` exit ``1``.
+
+    :return: ``None``.
+    :rtype: None
+    """
     with patch.object(sys, "argv", ["main.py", "doc.pdf", "--dpi-scale", "nope"]):
         assert run() == 1
 
 
 def test_help_exits_zero(capsys):
+    """``--help`` prints usage and exits ``0``.
+
+    :param capsys: pytest captured-output fixture. Required.
+    :type capsys: _pytest.capture.CaptureFixture
+    :return: ``None``.
+    :rtype: None
+    """
     with patch.object(sys, "argv", ["main.py", "--help"]):
         assert run() == 0
     out = capsys.readouterr().out
@@ -308,6 +456,13 @@ def test_help_exits_zero(capsys):
 # ---------------------------------------------------------------------------
 
 def test_exit2_file_not_found(tmp_path):
+    """A missing PDF path makes :func:`run` exit ``2``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     with patch.object(sys, "argv", ["main.py", str(tmp_path / "missing.pdf")]):
         assert run() == 2
 
@@ -317,6 +472,13 @@ def test_exit2_file_not_found(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_exit3_not_a_file(tmp_path):
+    """A path that exists but is not a file makes :func:`run` exit ``3``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     # passing a directory satisfies exists() but not is_file()
     with patch.object(sys, "argv", ["main.py", str(tmp_path)]):
         assert run() == 3
@@ -327,9 +489,18 @@ def test_exit3_not_a_file(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_exit4_no_ollama(tmp_path, monkeypatch):
+    """With no reachable Ollama instance, :func:`run` exits ``4``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf)
+    make_text_pdf(pdf)
     cfg = {"instances": [{"url": "http://127.0.0.1:19599", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
     with patch.object(sys, "argv", ["main.py", str(pdf)]):
@@ -341,9 +512,18 @@ def test_exit4_no_ollama(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_exit5_corrupt_pdf(tmp_path, monkeypatch):
+    """A corrupt PDF makes :func:`run` exit ``3`` (unreadable) or ``5`` (all fail).
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
     port = 19590
-    server = _start_ollama_mock(port, {"text": "x", "diagrams": []})
+    server = start_ollama_mock(port, {"text": "x", "diagrams": []})
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
 
@@ -364,14 +544,23 @@ def test_exit5_corrupt_pdf(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_exit0_already_complete(tmp_path, monkeypatch):
+    """A second run of a completed document returns ``0`` immediately.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
     port = 19591
-    server = _start_ollama_mock(port, {"text": "hello", "diagrams": []})
+    server = start_ollama_mock(port, {"text": "hello", "diagrams": []})
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
 
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf)
+    make_text_pdf(pdf)
 
     try:
         # first run
@@ -392,14 +581,23 @@ def test_exit0_already_complete(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_exit0_full_run(tmp_path, monkeypatch):
+    """A full two-page run writes the combined output and exits ``0``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :return: ``None``.
+    :rtype: None
+    """
     monkeypatch.chdir(tmp_path)
     port = 19592
-    server = _start_ollama_mock(port, {"text": "page text", "diagrams": []})
+    server = start_ollama_mock(port, {"text": "page text", "diagrams": []})
     cfg = {"instances": [{"url": f"http://127.0.0.1:{port}", "model": "qwen2.5vl:7b"}]}
     (tmp_path / "ollama.json").write_text(json.dumps(cfg), encoding="utf-8")
 
     pdf = tmp_path / "doc.pdf"
-    _make_pdf(pdf, pages=2)
+    make_text_pdf(pdf, pages=2)
 
     try:
         with patch.object(sys, "argv", ["main.py", str(pdf)]):
