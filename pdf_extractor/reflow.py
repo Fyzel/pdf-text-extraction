@@ -22,12 +22,27 @@ _LIST_RE = re.compile(
 )
 _TABLE_RE = re.compile(r"^[ \t]*\|")
 _QUOTE_RE = re.compile(r"^[ \t]*>")
-_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
+_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _HR_RE = re.compile(r"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 
 # A paragraph fully wrapped in a single run of 1–3 ``*`` or ``_`` with no
 # interior marker of the same kind — i.e. stray whole-paragraph emphasis.
 _WRAP_RE = re.compile(r"^(\*{1,3}|_{1,3})(\S.*?\S|\S)\1$")
+
+
+def _closes_fence(run: str, line: str, opening: str) -> bool:
+    """Return True if ``line`` is a valid CommonMark close for ``opening``.
+
+    A closing fence uses the same character as the opening run, is at least as
+    long, and carries no info string (only the fence and optional surrounding
+    whitespace).
+
+    Args:
+        run: The fence run captured from ``line`` (group 1 of :data:`_FENCE_RE`).
+        line: Candidate line, already known to match :data:`_FENCE_RE`.
+        opening: The opening fence run (e.g. ```` ``` ```` or ``~~~~``).
+    """
+    return run[0] == opening[0] and len(run) >= len(opening) and line.strip() == run
 
 
 def _is_boundary(line: str) -> bool:
@@ -66,7 +81,11 @@ def reflow_prose(text: str) -> str:
     Consecutive non-structural lines are merged into a single line (joined by a
     space), which is how a Markdown paragraph renders anyway. Blank lines,
     headings, list items, table rows, blockquotes, thematic breaks, and fenced
-    code blocks are emitted verbatim and act as paragraph boundaries.
+    code blocks are emitted verbatim and act as paragraph boundaries. Fences are
+    tracked per CommonMark: a block opened by a run of three or more backticks
+    (or tildes) is closed only by a run of the same character that is at least
+    as long and carries no info string, so a different or shorter marker inside
+    the block does not close it early and re-enable reflow.
 
     Args:
         text: Per-page Markdown text from the OCR response.
@@ -76,7 +95,7 @@ def reflow_prose(text: str) -> str:
     """
     out: list[str] = []
     buf: list[str] = []
-    in_fence: bool = False
+    fence: str | None = None  # opening fence run while inside a code block
 
     def _flush() -> None:
         if buf:
@@ -84,12 +103,17 @@ def reflow_prose(text: str) -> str:
             buf.clear()
 
     for line in text.split("\n"):
-        if _FENCE_RE.match(line):
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
             _flush()
-            in_fence = not in_fence
+            run: str = fence_match.group(1)
+            if fence is None:
+                fence = run
+            elif _closes_fence(run, line, fence):
+                fence = None
             out.append(line)
             continue
-        if in_fence:
+        if fence is not None:
             out.append(line)
             continue
         if _is_boundary(line):

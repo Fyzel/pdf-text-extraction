@@ -29,6 +29,7 @@ _MATCH_RATIO: float = 0.85
 _MAX_LEVEL: int = 6
 
 _HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+")
+_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _MARKER_RE = re.compile(r"[#*_`]+")
 _WS_RE = re.compile(r"\s+")
 
@@ -148,14 +149,38 @@ def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:
     return best_level
 
 
+def _closes_fence(run: str, line: str, opening: str) -> bool:
+    """Return True if ``line`` is a valid CommonMark close for ``opening``.
+
+    A closing fence uses the same character as the opening run, is at least as
+    long, and carries no info string (only the fence and optional surrounding
+    whitespace).
+
+    Args:
+        run: The fence run captured from ``line`` (group 1 of :data:`_FENCE_RE`).
+        line: Candidate line, already known to match :data:`_FENCE_RE`.
+        opening: The opening fence run (e.g. ```` ``` ```` or ``~~~~``).
+    """
+    return run[0] == opening[0] and len(run) >= len(opening) and line.strip() == run
+
+
 def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[float]) -> str:
     """Correct heading levels in page text using the PDF's font hierarchy.
 
     For each line: a model heading or a plain line matching a PDF heading is
     rewritten at the PDF-derived level; a model heading that matches no PDF
-    heading is demoted to plain text. Non-heading prose is left unchanged. When
-    the document has no heading scale (``scale`` empty) or no source PDF, the
-    text is returned untouched so the model's own markup stands as a fallback.
+    heading is demoted to plain text. Non-heading prose is left unchanged.
+
+    Lines inside a fenced code block are emitted verbatim, so a ``#`` comment or
+    heading-like line in code is never rewritten. Fences are tracked per
+    CommonMark: a block opened by a run of three or more backticks (or tildes)
+    is closed only by a run of the same character that is at least as long and
+    carries no info string, so a different or shorter marker inside the block
+    does not close it early.
+
+    When the document has no heading scale (``scale`` empty) or no source PDF,
+    the text is returned untouched so the model's own markup stands as a
+    fallback.
 
     Args:
         text: Per-page Markdown text from the OCR response.
@@ -172,7 +197,20 @@ def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[flo
     headings: list[tuple[str, int]] = _page_headings(pdf_path, page_num, scale)
 
     out: list[str] = []
+    fence: str | None = None  # opening fence run while inside a code block
     for line in text.split("\n"):
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
+            run: str = fence_match.group(1)
+            if fence is None:
+                fence = run
+            elif _closes_fence(run, line, fence):
+                fence = None
+            out.append(line)
+            continue
+        if fence is not None:
+            out.append(line)
+            continue
         is_heading: bool = bool(_HEADING_RE.match(line))
         stripped: str = line.strip()
         if not stripped:
