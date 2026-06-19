@@ -14,6 +14,7 @@ from pdf_extractor.config import OllamaInstance
 from pdf_extractor.headings import extract_heading_scale, fix_headings
 from pdf_extractor.links import extract_links, splice_links
 from pdf_extractor.mdlint import normalize_markdown
+from pdf_extractor.pdf_errors import PDF_ERRORS
 from pdf_extractor.reflow import reflow_prose
 from pdf_extractor.render import _DPI_SCALE
 from pdf_extractor.tables import extract_tables_markdown, splice_tables
@@ -49,11 +50,10 @@ Rules:
 def _encode_image(jpeg_path: Path) -> str:
     """Base64-encode a JPEG file for the Ollama multimodal request body.
 
-    Args:
-        jpeg_path: Path to the JPEG file.
-
-    Returns:
-        Base64-encoded string of the raw file bytes.
+    :param jpeg_path: Path to the JPEG file. Required.
+    :type jpeg_path: pathlib.Path
+    :return: Base64-encoded string of the raw file bytes.
+    :rtype: str
     """
     return base64.b64encode(jpeg_path.read_bytes()).decode("utf-8")
 
@@ -61,18 +61,18 @@ def _encode_image(jpeg_path: Path) -> str:
 def _call_ollama(instance: OllamaInstance, image_b64: str, timeout: int) -> str:
     """POST a page image to an Ollama instance and return the raw response text.
 
-    Args:
-        instance: Ollama instance to call.
-        image_b64: Base64-encoded JPEG image string.
-        timeout: HTTP request timeout in seconds.
-
-    Returns:
-        Raw ``response`` string from the Ollama JSON reply.
-
-    Raises:
-        urllib.error.URLError: On network or HTTP error.
-        ValueError: If the Ollama reply is missing the ``response`` field or is empty.
-        json.JSONDecodeError: If the Ollama reply body is not valid JSON.
+    :param instance: Ollama instance to call. Required.
+    :type instance: pdf_extractor.config.OllamaInstance
+    :param image_b64: Base64-encoded JPEG image string. Required.
+    :type image_b64: str
+    :param timeout: HTTP request timeout in seconds. Required.
+    :type timeout: int
+    :return: Raw ``response`` string from the Ollama JSON reply.
+    :rtype: str
+    :raises urllib.error.URLError: On network or HTTP error.
+    :raises ValueError: If the Ollama reply is missing the ``response`` field or
+        is empty.
+    :raises json.JSONDecodeError: If the Ollama reply body is not valid JSON.
     """
     payload: bytes = json.dumps({
         "model": instance.model,
@@ -101,15 +101,16 @@ def _parse_ocr_response(response_text: str) -> dict[str, Any]:
 
     Strips markdown code fences (```json ... ```) if the model wraps its output.
 
-    Args:
-        response_text: Raw text returned by the Ollama ``response`` field.
-
-    Returns:
-        Dict with keys ``text`` (str) and ``diagrams`` (list of bbox dicts).
-
-    Raises:
-        json.JSONDecodeError: If the text is not valid JSON after fence stripping.
-        ValueError: If the parsed object is missing ``text`` or ``diagrams`` keys.
+    :param response_text: Raw text returned by the Ollama ``response`` field.
+        Required.
+    :type response_text: str
+    :return: Dict with keys ``text`` (str) and ``diagrams`` (list of bbox
+        dicts).
+    :rtype: dict[str, typing.Any]
+    :raises json.JSONDecodeError: If the text is not valid JSON after fence
+        stripping.
+    :raises ValueError: If the parsed object is missing ``text`` or ``diagrams``
+        keys.
     """
     text: str = response_text.strip()
     if text.startswith("```"):
@@ -145,13 +146,20 @@ def _crop_diagram(
     Uses page-coordinate conversion because fitz opens JPEGs as point-dimensioned
     pages independent of the embedded DPI.
 
-    Args:
-        jpeg_path: Source JPEG to crop from.
-        x: Left edge in pixels.
-        y: Top edge in pixels.
-        width: Width of the region in pixels.
-        height: Height of the region in pixels.
-        output_path: Destination path for the cropped JPEG.
+    :param jpeg_path: Source JPEG to crop from. Required.
+    :type jpeg_path: pathlib.Path
+    :param x: Left edge in pixels. Required.
+    :type x: int
+    :param y: Top edge in pixels. Required.
+    :type y: int
+    :param width: Width of the region in pixels. Required.
+    :type width: int
+    :param height: Height of the region in pixels. Required.
+    :type height: int
+    :param output_path: Destination path for the cropped JPEG. Required.
+    :type output_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
     """
     pix_full: fitz.Pixmap = fitz.Pixmap(str(jpeg_path))
     img_w: int = pix_full.width
@@ -183,13 +191,13 @@ def _embedded_image_rects(pdf_path: Path, page_num: int) -> list[fitz.Rect]:
     into surrounding captions and body text. Rects are ordered top-to-bottom,
     then left-to-right, to give stable diagram numbering.
 
-    Args:
-        pdf_path: Path to the source PDF file.
-        page_num: 1-based page number.
-
-    Returns:
-        List of ``fitz.Rect`` in page points; empty if the page embeds no images
-        (e.g. a vector-only figure).
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: pathlib.Path
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :return: List of ``fitz.Rect`` in page points; empty if the page embeds no
+        images (e.g. a vector-only figure).
+    :rtype: list[fitz.Rect]
     """
     doc: fitz.Document = fitz.open(str(pdf_path))
     try:
@@ -216,12 +224,19 @@ def _crop_pdf_region(
     Rendering from the source page at the Phase 1 DPI yields a clean, full-quality
     crop with no recompression of the already-rasterised page image.
 
-    Args:
-        pdf_path: Path to the source PDF file.
-        page_num: 1-based page number.
-        rect: Region to crop, in page points.
-        output_path: Destination path for the cropped JPEG.
-        dpi_scale: Render scale factor; should match the Phase 1 page render.
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: pathlib.Path
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :param rect: Region to crop, in page points. Required.
+    :type rect: fitz.Rect
+    :param output_path: Destination path for the cropped JPEG. Required.
+    :type output_path: pathlib.Path
+    :param dpi_scale: Render scale factor; should match the Phase 1 page render.
+        Optional; defaults to ``_DPI_SCALE`` (2.0).
+    :type dpi_scale: float
+    :return: ``None``.
+    :rtype: None
     """
     doc: fitz.Document = fitz.open(str(pdf_path))
     try:
@@ -237,12 +252,13 @@ def _crop_pdf_region(
 def _page_stem(page_num: int, page_count: int) -> str:
     """Return the zero-padded filename stem for a page (without extension).
 
-    Args:
-        page_num: 1-based page number.
-        page_count: Total page count, used to determine zero-padding width.
-
-    Returns:
-        Stem string such as ``page_001`` for a 100-page document.
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :param page_count: Total page count, used to determine zero-padding width.
+        Required.
+    :type page_count: int
+    :return: Stem string such as ``page_001`` for a 100-page document.
+    :rtype: str
     """
     width: int = len(str(page_count))
     return f"page_{page_num:0{width}d}"
@@ -255,20 +271,20 @@ def _page_white_ratio(jpeg_path: Path) -> float:
     cheap regardless of render DPI. A pixel is "white" when every colour channel
     is at least ``_WHITE_CHANNEL_MIN``.
 
-    Args:
-        jpeg_path: Path to the rendered page JPEG.
-
-    Returns:
-        Ratio in ``[0.0, 1.0]`` of white pixels to total pixels. Returns ``0.0``
+    :param jpeg_path: Path to the rendered page JPEG. Required.
+    :type jpeg_path: pathlib.Path
+    :return: Ratio in ``[0.0, 1.0]`` of white pixels to total pixels; ``0.0``
         for a missing, corrupt, or empty image, so such pages are treated as
         non-blank and still get a real OCR attempt.
+    :rtype: float
     """
     try:
         pix: fitz.Pixmap = fitz.Pixmap(str(jpeg_path))
         # Halve the dimensions repeatedly until small; keeps the Python scan fast.
         while pix.width > 200 or pix.height > 200:
             pix.shrink(1)
-    except Exception:  # noqa: BLE001 — any decode failure means "treat as non-blank"
+    except PDF_ERRORS:
+        # any decode failure means "treat as non-blank"
         return 0.0
 
     total: int = pix.width * pix.height
@@ -299,13 +315,16 @@ def _is_blank_page(pdf_path: Path | None, page_num: int, jpeg_path: Path) -> boo
     the inspection is skipped and the decision falls through to the whiteness
     heuristic rather than aborting OCR for the page.
 
-    Args:
-        pdf_path: Source PDF, or ``None`` when unavailable.
-        page_num: 1-based page number.
-        jpeg_path: Rendered page JPEG, used for the whiteness fallback.
-
-    Returns:
-        ``True`` when the page should be treated as blank.
+    :param pdf_path: Source PDF. Required, but may be ``None`` when unavailable
+        (the whiteness check is then used alone).
+    :type pdf_path: pathlib.Path | None
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :param jpeg_path: Rendered page JPEG, used for the whiteness fallback.
+        Required.
+    :type jpeg_path: pathlib.Path
+    :return: ``True`` when the page should be treated as blank.
+    :rtype: bool
     """
     if pdf_path is not None:
         try:
@@ -316,8 +335,9 @@ def _is_blank_page(pdf_path: Path | None, page_num: int, jpeg_path: Path) -> boo
                     return False
             finally:
                 doc.close()
-        except Exception:  # noqa: BLE001 — can't inspect PDF; fall back to whiteness
-            pass  # fall through to the pixel-whiteness check
+        except PDF_ERRORS:
+            # can't inspect PDF; fall through to the pixel-whiteness check
+            pass
 
     return _page_white_ratio(jpeg_path) >= _BLANK_WHITE_RATIO
 
@@ -351,29 +371,49 @@ def _ocr_page_with_retry(
     is available. The model's non-empty ``diagrams`` list gates whether any crop
     happens at all, so pages with purely decorative images stay text-only.
 
-    Args:
-        page_num: 1-based page number.
-        instances_ordered: Instances to try in order (pre-rotated for round-robin).
-        pages_dir: Directory containing the rendered page JPEG files.
-        diagrams_dir: Directory where cropped diagram images will be written.
-        page_count: Total page count for zero-padded filename generation.
-        ocr_timeout: Per-request HTTP timeout in seconds.
-        pdf_path: Source PDF, used for exact embedded-image crops. When ``None``,
-            diagrams are cropped from the rendered JPEG using model bboxes.
-        dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
-        include_comments: When ``True`` and a source PDF is available, append the
-            page's text-bearing annotations as a ``## Comments`` section.
-        heading_scale: Document-wide heading size ranking from
-            ``extract_heading_scale``; passed through to ``fix_headings`` to
-            relevel the page's headings. Only takes effect when ``pdf_path`` is
-            also supplied; ``fix_headings`` no-ops without a PDF. ``None`` or
-            empty leaves headings as-is.
-        include_links: When ``True`` and a source PDF is available, rewrite the
-            page's plain anchor text as Markdown links using the PDF's URI links.
-
-    Returns:
-        Tuple of ``(page_num, success, error_message, diagram_count)``.
-        ``error_message`` is empty on success; ``diagram_count`` is 0 on failure.
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :param instances_ordered: Instances to try in order (pre-rotated for
+        round-robin). Required.
+    :type instances_ordered: list[pdf_extractor.config.OllamaInstance]
+    :param pages_dir: Directory containing the rendered page JPEG files.
+        Required.
+    :type pages_dir: pathlib.Path
+    :param diagrams_dir: Directory where cropped diagram images will be written.
+        Required.
+    :type diagrams_dir: pathlib.Path
+    :param page_count: Total page count for zero-padded filename generation.
+        Required.
+    :type page_count: int
+    :param ocr_timeout: Per-request HTTP timeout in seconds. Optional; defaults
+        to ``_DEFAULT_OCR_TIMEOUT`` (600).
+    :type ocr_timeout: int
+    :param pdf_path: Source PDF, used for exact embedded-image crops. Optional;
+        defaults to ``None``, in which case diagrams are cropped from the
+        rendered JPEG using model bboxes.
+    :type pdf_path: pathlib.Path | None
+    :param dpi_scale: Render scale factor for PDF-region crops; should match
+        Phase 1. Optional; defaults to ``_DPI_SCALE`` (2.0).
+    :type dpi_scale: float
+    :param include_comments: When ``True`` and a source PDF is available, append
+        the page's text-bearing annotations as a ``## Comments`` section.
+        Optional; defaults to ``False``.
+    :type include_comments: bool
+    :param heading_scale: Document-wide heading size ranking from
+        :func:`pdf_extractor.headings.extract_heading_scale`; passed through to
+        ``fix_headings`` to relevel the page's headings. Only takes effect when
+        ``pdf_path`` is also supplied; ``fix_headings`` no-ops without a PDF.
+        Optional; defaults to ``None``, and ``None`` or empty leaves headings
+        as-is.
+    :type heading_scale: list[float] | None
+    :param include_links: When ``True`` and a source PDF is available, rewrite
+        the page's plain anchor text as Markdown links using the PDF's URI
+        links. Optional; defaults to ``False``.
+    :type include_links: bool
+    :return: Tuple of ``(page_num, success, error_message, diagram_count)``;
+        ``error_message`` is empty on success and ``diagram_count`` is 0 on
+        failure.
+    :rtype: tuple[int, bool, str, int]
     """
     stem: str = _page_stem(page_num, page_count)
     jpeg_path: Path = pages_dir / f"{stem}.jpg"
@@ -451,7 +491,7 @@ def _ocr_page_with_retry(
                     _crop_pdf_region(pdf_path, page_num, rect, diag_path, dpi_scale)
                     diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
                     cropped_count += 1
-                except Exception as exc:  # noqa: BLE001
+                except PDF_ERRORS as exc:
                     print(f"  Page {page_num} diagram {idx}: crop failed — {exc}")
         else:
             for idx, bbox in enumerate(raw_diagrams, start=1):
@@ -471,7 +511,7 @@ def _ocr_page_with_retry(
                     )
                     diagram_refs.append(f"![Diagram {idx}](diagrams/{diag_filename})")
                     cropped_count += 1
-                except Exception as exc:  # noqa: BLE001
+                except PDF_ERRORS as exc:
                     print(f"  Page {page_num} diagram {idx}: crop failed — {exc}")
 
         parts: list[str] = [page_text]
@@ -507,20 +547,43 @@ def run_phase2(
     order; failed pages are retried on the next instance in the rotation.
     State writes are serialised through the StateManager lock.
 
-    Args:
-        output_dir: Working directory containing ``pages/`` and ``diagrams/`` subdirs.
-        page_count: Total page count for zero-padded filename generation.
-        pending: 1-based page numbers with ``image_done=True`` and ``ocr_done=False``.
-        instances: Reachable Ollama instances to distribute OCR work across.
-        state: Shared AppState mutated under the StateManager lock.
-        state_mgr: StateManager for serialised, atomic state writes.
-        ocr_timeout: Per-request HTTP timeout in seconds passed to each worker.
-        pdf_path: Source PDF, forwarded to workers for exact embedded-image crops.
-        dpi_scale: Render scale factor for PDF-region crops; should match Phase 1.
-        include_comments: When ``True``, append PDF annotations as a comments
-            section to each page; forwarded to every worker.
-        include_links: When ``True``, rewrite plain anchor text as Markdown links
-            from the PDF's URI links on each page; forwarded to every worker.
+    :param output_dir: Working directory containing ``pages/`` and
+        ``diagrams/`` subdirs. Required.
+    :type output_dir: pathlib.Path
+    :param page_count: Total page count for zero-padded filename generation.
+        Required.
+    :type page_count: int
+    :param pending: 1-based page numbers with ``image_done=True`` and
+        ``ocr_done=False``. Required.
+    :type pending: list[int]
+    :param instances: Reachable Ollama instances to distribute OCR work across.
+        Required.
+    :type instances: list[pdf_extractor.config.OllamaInstance]
+    :param state: Shared application state mutated under the StateManager lock.
+        Required.
+    :type state: pdf_extractor.state.AppState
+    :param state_mgr: State manager for serialised, atomic state writes.
+        Required.
+    :type state_mgr: pdf_extractor.state.StateManager
+    :param ocr_timeout: Per-request HTTP timeout in seconds passed to each
+        worker. Optional; defaults to ``_DEFAULT_OCR_TIMEOUT`` (600).
+    :type ocr_timeout: int
+    :param pdf_path: Source PDF, forwarded to workers for exact embedded-image
+        crops. Optional; defaults to ``None``.
+    :type pdf_path: pathlib.Path | None
+    :param dpi_scale: Render scale factor for PDF-region crops; should match
+        Phase 1. Optional; defaults to ``_DPI_SCALE`` (2.0).
+    :type dpi_scale: float
+    :param include_comments: When ``True``, append PDF annotations as a comments
+        section to each page; forwarded to every worker. Optional; defaults to
+        ``False``.
+    :type include_comments: bool
+    :param include_links: When ``True``, rewrite plain anchor text as Markdown
+        links from the PDF's URI links on each page; forwarded to every worker.
+        Optional; defaults to ``False``.
+    :type include_links: bool
+    :return: ``None``.
+    :rtype: None
     """
     pages_dir: Path = output_dir / "pages"
     diagrams_dir: Path = output_dir / "diagrams"
@@ -538,6 +601,19 @@ def run_phase2(
         int, list[OllamaInstance], Path, Path, int, int, Path | None, float, bool,
         list[float], bool,
     ]:
+        """Build the positional arg tuple for one page's OCR worker call.
+
+        Rotates ``instances`` so page ``page_num`` starts on a different
+        instance (round-robin), then packs the shared per-run settings.
+
+        :param page_num: 1-based page number to build worker args for. Required.
+        :type page_num: int
+        :return: The positional argument tuple for :func:`_ocr_page_with_retry`,
+            i.e. ``(page_num, ordered_instances, pages_dir, diagrams_dir,
+            page_count, ocr_timeout, pdf_path, dpi_scale, include_comments,
+            heading_scale, include_links)``.
+        :rtype: tuple
+        """
         start: int = (page_num - 1) % n
         ordered: list[OllamaInstance] = instances[start:] + instances[:start]
         return (

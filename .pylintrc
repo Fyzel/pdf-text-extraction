@@ -1,0 +1,10 @@
+[FORMAT]
+max-line-length = 100
+
+[DESIGN]
+max-args = 12
+max-positional-arguments = 12
+max-locals = 40
+max-branches = 20
+max-statements = 70
+max-returns = 8

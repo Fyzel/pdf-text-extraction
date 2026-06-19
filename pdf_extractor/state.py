@@ -22,12 +22,18 @@ class StateMismatchError(Exception):
 class PageState:
     """Per-page processing status tracked in state.json.
 
-    Attributes:
-        image_done: ``True`` after the page JPEG was saved successfully.
-        image_failed: ``True`` if JPEG rendering failed; page is skipped in Phase 2.
-        ocr_done: ``True`` after the per-page markdown was saved successfully.
-        ocr_failed: ``True`` if all Ollama retries were exhausted; page is skipped in Phase 3.
-        diagram_count: Number of diagrams cropped from this page.
+    :ivar image_done: ``True`` after the page JPEG was saved successfully.
+    :vartype image_done: bool
+    :ivar image_failed: ``True`` if JPEG rendering failed; page is skipped in
+        Phase 2.
+    :vartype image_failed: bool
+    :ivar ocr_done: ``True`` after the per-page markdown was saved successfully.
+    :vartype ocr_done: bool
+    :ivar ocr_failed: ``True`` if all Ollama retries were exhausted; page is
+        skipped in Phase 3.
+    :vartype ocr_failed: bool
+    :ivar diagram_count: Number of diagrams cropped from this page.
+    :vartype diagram_count: int
     """
 
     image_done: bool = False
@@ -41,11 +47,15 @@ class PageState:
 class AppState:
     """Full application state loaded from or written to state.json.
 
-    Attributes:
-        pdf_path: Absolute path to the source PDF, stored for identification.
-        page_count: Total number of pages discovered at startup.
-        combined_done: ``True`` after Phase 3 writes the combined markdown file.
-        pages: Per-page state keyed by 1-based page number string (e.g. ``"1"``).
+    :ivar pdf_path: Absolute path to the source PDF, stored for identification.
+    :vartype pdf_path: str
+    :ivar page_count: Total number of pages discovered at startup.
+    :vartype page_count: int
+    :ivar combined_done: ``True`` after Phase 3 writes the combined markdown file.
+    :vartype combined_done: bool
+    :ivar pages: Per-page state keyed by 1-based page number string (e.g.
+        ``"1"``).
+    :vartype pages: dict[str, PageState]
     """
 
     pdf_path: str
@@ -64,15 +74,20 @@ class StateManager:
     def __init__(self, output_dir: Path) -> None:
         """Initialize the state manager.
 
-        Args:
-            output_dir: Working directory where ``state.json`` will be stored.
+        :param output_dir: Working directory where ``state.json`` will be
+            stored. Required.
+        :type output_dir: pathlib.Path
         """
         self._path: Path = output_dir / _STATE_FILENAME
         self._lock: threading.Lock = threading.Lock()
 
     @property
     def path(self) -> Path:
-        """Absolute path to ``state.json``."""
+        """Absolute path to the managed ``state.json`` file.
+
+        :return: Path to ``state.json`` inside the manager's output directory.
+        :rtype: pathlib.Path
+        """
         return self._path
 
     def load_or_init(self, pdf_path: Path, page_count: int) -> AppState:
@@ -83,16 +98,15 @@ class StateManager:
         :class:`StateMismatchError` is raised rather than returning state that
         belongs to a different (or changed) document.
 
-        Args:
-            pdf_path: Path to the source PDF; stored as an absolute path.
-            page_count: Total number of pages in the PDF.
-
-        Returns:
-            Loaded or freshly initialised AppState.
-
-        Raises:
-            StateMismatchError: The existing ``state.json`` describes a different
-                PDF path or a different page count than the current run.
+        :param pdf_path: Path to the source PDF; stored as an absolute path.
+            Required.
+        :type pdf_path: pathlib.Path
+        :param page_count: Total number of pages in the PDF. Required.
+        :type page_count: int
+        :return: Loaded or freshly initialised application state.
+        :rtype: AppState
+        :raises StateMismatchError: The existing ``state.json`` describes a
+            different PDF path or a different page count than the current run.
         """
         if self._path.is_file():
             loaded: AppState = self._load()
@@ -110,13 +124,19 @@ class StateManager:
     def update_page(self, state: AppState, page_num: int, **fields: object) -> None:
         """Update fields on a single page entry and persist atomically under the lock.
 
-        Valid keyword arguments match ``PageState`` fields:
-        ``image_done``, ``image_failed``, ``ocr_done``, ``ocr_failed``, ``diagram_count``.
+        Valid keyword arguments match :class:`PageState` fields:
+        ``image_done``, ``image_failed``, ``ocr_done``, ``ocr_failed``,
+        ``diagram_count``.
 
-        Args:
-            state: Shared AppState instance to mutate.
-            page_num: 1-based page number to update.
-            **fields: ``PageState`` field names and their new values.
+        :param state: Shared application state to mutate. Required.
+        :type state: AppState
+        :param page_num: 1-based page number to update. Required.
+        :type page_num: int
+        :param fields: :class:`PageState` field names mapped to their new values.
+            Optional; passed as keyword arguments.
+        :type fields: object
+        :return: ``None``.
+        :rtype: None
         """
         with self._lock:
             page: PageState = state.pages[str(page_num)]
@@ -132,9 +152,12 @@ class StateManager:
         clears ``combined_done`` on the whole state so Phase 3 reassembles. Used
         by the ``--rerun-pages`` feature to force reprocessing of specific pages.
 
-        Args:
-            state: Shared AppState instance to mutate.
-            page_nums: 1-based page numbers to reset.
+        :param state: Shared application state to mutate. Required.
+        :type state: AppState
+        :param page_nums: 1-based page numbers to reset. Required.
+        :type page_nums: list[int]
+        :return: ``None``.
+        :rtype: None
         """
         with self._lock:
             for page_num in page_nums:
@@ -150,8 +173,10 @@ class StateManager:
     def mark_combined_done(self, state: AppState) -> None:
         """Set ``combined_done = True`` and persist under the lock.
 
-        Args:
-            state: Shared AppState instance to mutate.
+        :param state: Shared application state to mutate. Required.
+        :type state: AppState
+        :return: ``None``.
+        :rtype: None
         """
         with self._lock:
             state.combined_done = True
@@ -161,14 +186,13 @@ class StateManager:
     def status(state: AppState) -> Literal["complete", "partial", "not_started"]:
         """Derive the resumability status from the current state.
 
-        Args:
-            state: AppState to evaluate.
-
-        Returns:
-            - ``"complete"``: ``combined_done`` is ``True``; nothing to do.
-            - ``"partial"``: at least one page has been attempted (any of
-              ``image_done``, ``image_failed``, ``ocr_done``, or ``ocr_failed``).
-            - ``"not_started"``: no page has been touched yet.
+        :param state: Application state to evaluate. Required.
+        :type state: AppState
+        :return: One of ``"complete"`` (``combined_done`` is ``True``; nothing
+            to do), ``"partial"`` (at least one page attempted — any of
+            ``image_done``, ``image_failed``, ``ocr_done``, or ``ocr_failed``),
+            or ``"not_started"`` (no page touched yet).
+        :rtype: typing.Literal["complete", "partial", "not_started"]
         """
         if state.combined_done:
             return "complete"
@@ -180,14 +204,17 @@ class StateManager:
     def _validate(self, state: AppState, pdf_path: Path, page_count: int) -> None:
         """Verify a loaded state matches the current PDF, or raise.
 
-        Args:
-            state: AppState deserialised from an existing ``state.json``.
-            pdf_path: Path to the PDF for the current run.
-            page_count: Page count discovered for the current run.
-
-        Raises:
-            StateMismatchError: The stored absolute PDF path or page count does
-                not match the current run.
+        :param state: Application state deserialised from an existing
+            ``state.json``. Required.
+        :type state: AppState
+        :param pdf_path: Path to the PDF for the current run. Required.
+        :type pdf_path: pathlib.Path
+        :param page_count: Page count discovered for the current run. Required.
+        :type page_count: int
+        :return: ``None``.
+        :rtype: None
+        :raises StateMismatchError: The stored absolute PDF path or page count
+            does not match the current run.
         """
         current_path: str = str(pdf_path.resolve())
         if state.pdf_path != current_path:
@@ -204,10 +231,10 @@ class StateManager:
             )
 
     def _load(self) -> AppState:
-        """Deserialise ``state.json`` from disk into an AppState.
+        """Deserialise ``state.json`` from disk into an :class:`AppState`.
 
-        Returns:
-            AppState populated from the persisted JSON file.
+        :return: Application state populated from the persisted JSON file.
+        :rtype: AppState
         """
         with open(self._path, encoding="utf-8") as fh:
             data: dict = json.load(fh)
@@ -222,10 +249,13 @@ class StateManager:
         )
 
     def _write(self, state: AppState) -> None:
-        """Serialise AppState to disk atomically via a ``.tmp`` rename.
+        """Serialise application state to disk atomically via a ``.tmp`` rename.
 
-        Args:
-            state: AppState to persist. Caller must hold ``self._lock``.
+        :param state: Application state to persist. Required. Caller must hold
+            ``self._lock``.
+        :type state: AppState
+        :return: ``None``.
+        :rtype: None
         """
         payload: dict = {
             "pdf_path": state.pdf_path,

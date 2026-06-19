@@ -15,9 +15,10 @@ _CONFIG_FILENAME: str = "ollama.json"
 class OllamaInstance:
     """A single Ollama endpoint with its assigned model.
 
-    Attributes:
-        url: Base URL of the Ollama instance (e.g. ``http://localhost:11434``).
-        model: Model name to use for OCR on this instance.
+    :ivar url: Base URL of the Ollama instance (e.g. ``http://localhost:11434``).
+    :vartype url: str
+    :ivar model: Model name to use for OCR on this instance.
+    :vartype model: str
     """
 
     url: str
@@ -28,10 +29,13 @@ class OllamaInstance:
 class AppConfig:
     """Resolved application configuration derived from ollama.json.
 
-    Attributes:
-        instances: Ollama instances to distribute OCR work across.
-        max_render_workers: Maximum parallel processes for Phase 1 image rendering.
-        ocr_timeout: Per-request HTTP timeout in seconds for Ollama OCR calls.
+    :ivar instances: Ollama instances to distribute OCR work across.
+    :vartype instances: list[OllamaInstance]
+    :ivar max_render_workers: Maximum parallel processes for Phase 1 image
+        rendering.
+    :vartype max_render_workers: int
+    :ivar ocr_timeout: Per-request HTTP timeout in seconds for Ollama OCR calls.
+    :vartype ocr_timeout: int
     """
 
     instances: list[OllamaInstance]
@@ -40,18 +44,18 @@ class AppConfig:
 
 
 def _parse(data: dict[str, Any], cpu_count: int) -> AppConfig:
-    """Parse and validate a raw config dict into an AppConfig.
+    """Parse and validate a raw config dict into an :class:`AppConfig`.
 
-    Args:
-        data: Decoded JSON object from ollama.json.
-        cpu_count: Logical CPU core count used to cap ``max_render_workers``.
-
-    Returns:
-        Validated AppConfig with all instances and worker count resolved.
-
-    Raises:
-        ValueError: If ``instances`` is missing, empty, or contains an entry
-            without a ``url``, or if ``max_render_workers`` is not a positive integer.
+    :param data: Decoded JSON object from ollama.json. Required.
+    :type data: dict[str, typing.Any]
+    :param cpu_count: Logical CPU core count used to cap ``max_render_workers``.
+        Required.
+    :type cpu_count: int
+    :return: Validated config with all instances and worker count resolved.
+    :rtype: AppConfig
+    :raises ValueError: If ``instances`` is missing, empty, or contains an entry
+        without a ``url``, or if ``max_render_workers`` is not a positive
+        integer.
     """
     raw: Any = data.get("instances")
     if not isinstance(raw, list) or not raw:
@@ -89,20 +93,18 @@ def load_config(pdf_path: Path) -> AppConfig:
     """Load ollama.json from alongside the PDF, then cwd, then built-in defaults.
 
     Search order:
-        1. Directory containing the PDF file.
-        2. Current working directory.
-        3. Built-in defaults (``http://localhost:11434``, model ``qwen2.5vl:7b``).
 
-    Args:
-        pdf_path: Path to the input PDF file.
+    1. Directory containing the PDF file.
+    2. Current working directory.
+    3. Built-in defaults (``http://localhost:11434``, model ``qwen2.5vl:7b``).
 
-    Returns:
-        Resolved AppConfig from the first found ollama.json, or built-in defaults
-        when no config file is present.
-
-    Raises:
-        ValueError: If the found ollama.json fails schema validation.
-        json.JSONDecodeError: If the found ollama.json is not valid JSON.
+    :param pdf_path: Path to the input PDF file. Required.
+    :type pdf_path: pathlib.Path
+    :return: Resolved config from the first found ollama.json, or built-in
+        defaults when no config file is present.
+    :rtype: AppConfig
+    :raises ValueError: If the found ollama.json fails schema validation.
+    :raises json.JSONDecodeError: If the found ollama.json is not valid JSON.
     """
     cpu_count: int = os.cpu_count() or 1
     search_dirs: dict[Path, None] = dict.fromkeys(
