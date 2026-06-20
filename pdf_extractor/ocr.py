@@ -476,11 +476,13 @@ def _ocr_page_with_retry(
 
         # Prefer exact embedded-image rects from the PDF; fall back to the model's
         # bounding boxes only for vector-only figures or when no PDF is available.
-        rects: list[fitz.Rect] = (
-            _embedded_image_rects(pdf_path, page_num)
-            if raw_diagrams and pdf_path is not None
-            else []
-        )
+        # A PDF-scan failure here must not abort the page, so fall back to bboxes.
+        rects: list[fitz.Rect] = []
+        if raw_diagrams and pdf_path is not None:
+            try:
+                rects = _embedded_image_rects(pdf_path, page_num)
+            except PDF_ERRORS:
+                rects = []
 
         if rects:
             for idx, rect in enumerate(rects, start=1):

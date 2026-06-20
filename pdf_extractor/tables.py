@@ -91,8 +91,9 @@ def extract_tables_markdown(pdf_path: str, page_num: int) -> list[str]:
         page has no detectable tables (e.g. a scanned/image-only page).
     :rtype: list[str]
     """
-    doc: fitz.Document = fitz.open(pdf_path)
+    doc: fitz.Document | None = None
     try:
+        doc = fitz.open(pdf_path)
         page: fitz.Page = doc[page_num - 1]
         found = page.find_tables()
         tables = sorted(found.tables, key=lambda t: (round(t.bbox[1]), round(t.bbox[0])))
@@ -101,7 +102,11 @@ def extract_tables_markdown(pdf_path: str, page_num: int) -> list[str]:
         # never let table extraction fail a page
         return []
     finally:
-        doc.close()
+        if doc is not None:
+            try:
+                doc.close()
+            except PDF_ERRORS:
+                pass  # cleanup must not break the guarantee
 
 
 def _table_blocks(lines: list[str]) -> list[tuple[int, int]]:
