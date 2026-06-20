@@ -20,7 +20,7 @@ from difflib import SequenceMatcher
 import fitz
 
 from pdf_extractor.fences import next_fence_state
-from pdf_extractor.pdf_errors import PDF_ERRORS
+from pdf_extractor.pdf_errors import PDF_ERRORS, open_guarded
 
 # A heading's font must exceed body size by this ratio. 1.15 cleanly separates
 # real headings (≈1.27× body and up) from near-body noise like a 12pt "Page N
@@ -124,25 +124,17 @@ def extract_heading_scale(pdf_path: str) -> list[float]:
         extractable text (e.g. scanned/image-only) or no text larger than body.
     :rtype: list[float]
     """
-    doc: fitz.Document | None = None
     try:
-        doc = fitz.open(pdf_path)
-        sizes: collections.Counter = _doc_span_sizes(doc)
-        if not sizes:
-            return []
-        body: float = sizes.most_common(1)[0][0]
-        heading_sizes = {s for s in sizes if s >= body * _HEADING_RATIO}
-        return sorted(heading_sizes, reverse=True)
+        with open_guarded(pdf_path) as doc:
+            sizes: collections.Counter = _doc_span_sizes(doc)
+            if not sizes:
+                return []
+            body: float = sizes.most_common(1)[0][0]
+            heading_sizes = {s for s in sizes if s >= body * _HEADING_RATIO}
+            return sorted(heading_sizes, reverse=True)
     except PDF_ERRORS:
         # never let heading extraction fail a page
         return []
-    finally:
-        if doc is not None:
-            try:
-                doc.close()
-            except PDF_ERRORS:
-                # cleanup must not break the guarantee
-                pass
 
 
 def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tuple[str, int]]:
@@ -159,29 +151,21 @@ def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tup
         in ``scale``; empty if the page cannot be read.
     :rtype: list[tuple[str, int]]
     """
-    doc: fitz.Document | None = None
     try:
-        doc = fitz.open(pdf_path)
-        page: fitz.Page = doc[page_num - 1]
-        result: list[tuple[str, int]] = []
-        for block in page.get_text("dict")["blocks"]:
-            for line in block.get("lines", []):
-                size, text = _line_size_text(line)
-                norm: str = _norm(text)
-                if norm and size in scale:
-                    level: int = min(scale.index(size) + 1, _MAX_LEVEL)
-                    result.append((norm, level))
-        return result
+        with open_guarded(pdf_path) as doc:
+            page: fitz.Page = doc[page_num - 1]
+            result: list[tuple[str, int]] = []
+            for block in page.get_text("dict")["blocks"]:
+                for line in block.get("lines", []):
+                    size, text = _line_size_text(line)
+                    norm: str = _norm(text)
+                    if norm and size in scale:
+                        level: int = min(scale.index(size) + 1, _MAX_LEVEL)
+                        result.append((norm, level))
+            return result
     except PDF_ERRORS:
         # never let heading extraction fail a page
         return []
-    finally:
-        if doc is not None:
-            try:
-                doc.close()
-            except PDF_ERRORS:
-                # cleanup must not break the guarantee
-                pass
 
 
 def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:

@@ -12,6 +12,10 @@ low-level MuPDF errors (``FzErrorSystem`` and siblings) subclass
 covers both, plus the standard I/O, value, and indexing errors these helpers can
 hit.
 """
+import contextlib
+from collections.abc import Iterator
+
+import pymupdf
 import pymupdf.mupdf
 
 #: Exception types PDF reading, rendering, and parsing realistically raise.
@@ -24,3 +28,29 @@ PDF_ERRORS: tuple[type[BaseException], ...] = (
     KeyError,
     pymupdf.mupdf.FzErrorBase,
 )
+
+
+@contextlib.contextmanager
+def open_guarded(pdf_path: str) -> Iterator[pymupdf.Document]:
+    """Open a PDF, yield the document, and always close it on exit.
+
+    The ``fitz.open`` call runs inside the guarded block so open-time failures
+    propagate to the caller's ``except PDF_ERRORS`` rather than escaping it.
+    Close-time errors are swallowed so cleanup can never break a helper's
+    "never fail a page" guarantee.
+
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: str
+    :return: Context manager yielding the open document.
+    :rtype: Iterator[pymupdf.Document]
+    """
+    doc: pymupdf.Document | None = None
+    try:
+        doc = pymupdf.open(pdf_path)
+        yield doc
+    finally:
+        if doc is not None:
+            try:
+                doc.close()
+            except PDF_ERRORS:
+                pass  # cleanup must not break the guarantee

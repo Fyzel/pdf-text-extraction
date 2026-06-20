@@ -15,7 +15,7 @@ import re
 
 import fitz
 
-from pdf_extractor.pdf_errors import PDF_ERRORS
+from pdf_extractor.pdf_errors import PDF_ERRORS, open_guarded
 
 # Silence the one-time "Consider using the pymupdf_layout package …" notice that
 # find_tables prints to stdout; it would otherwise clutter every run.
@@ -91,22 +91,15 @@ def extract_tables_markdown(pdf_path: str, page_num: int) -> list[str]:
         page has no detectable tables (e.g. a scanned/image-only page).
     :rtype: list[str]
     """
-    doc: fitz.Document | None = None
     try:
-        doc = fitz.open(pdf_path)
-        page: fitz.Page = doc[page_num - 1]
-        found = page.find_tables()
-        tables = sorted(found.tables, key=lambda t: (round(t.bbox[1]), round(t.bbox[0])))
-        return [_render_table(t.extract()) for t in tables if t.row_count]
+        with open_guarded(pdf_path) as doc:
+            page: fitz.Page = doc[page_num - 1]
+            found = page.find_tables()
+            tables = sorted(found.tables, key=lambda t: (round(t.bbox[1]), round(t.bbox[0])))
+            return [_render_table(t.extract()) for t in tables if t.row_count]
     except PDF_ERRORS:
         # never let table extraction fail a page
         return []
-    finally:
-        if doc is not None:
-            try:
-                doc.close()
-            except PDF_ERRORS:
-                pass  # cleanup must not break the guarantee
 
 
 def _table_blocks(lines: list[str]) -> list[tuple[int, int]]:
