@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Test
+    name: CI Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,7 +29,7 @@ jobs:
       - name: Lint (pylint)
         run: |
           FILES=$(find . -name "*.py" ! -path "./.venv/*")
-          [ -n "$FILES" ] && pylint $FILES --exit-zero
+          [ -n "$FILES" ] && pylint --rcfile=.pylintrc $FILES
 
       - name: Security scan (bandit)
         run: bandit -r . -ll --exclude .venv

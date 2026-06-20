@@ -27,7 +27,13 @@ _UNORDERED: frozenset[str] = frozenset({"-", "*", "+"})
 
 
 def _is_unordered(marker: str) -> bool:
-    """Return True if the marker is an unordered-list bullet (``-``/``*``/``+``)."""
+    """Return whether a marker is an unordered-list bullet (``-``/``*``/``+``).
+
+    :param marker: List marker captured from a line. Required.
+    :type marker: str
+    :return: ``True`` if ``marker`` is ``-``, ``*``, or ``+``.
+    :rtype: bool
+    """
     return marker in _UNORDERED
 
 
@@ -35,14 +41,18 @@ def _is_unordered(marker: str) -> bool:
 class _Level:
     """One open list level on the nesting stack.
 
-    Attributes:
-        raw_indent: Source indentation width, used only to detect nesting depth
-            relative to other items.
-        out_indent: Normalised indentation emitted for items at this level.
-        ordered: Whether this level is an ordered list.
-        counter: Running 1-based item number for ordered levels.
-        marker_len: Rendered width of the most recent marker at this level
-            (e.g. 2 for ``5.``), used to align any child level's indentation.
+    :ivar raw_indent: Source indentation width, used only to detect nesting
+        depth relative to other items.
+    :vartype raw_indent: int
+    :ivar out_indent: Normalised indentation emitted for items at this level.
+    :vartype out_indent: str
+    :ivar ordered: Whether this level is an ordered list.
+    :vartype ordered: bool
+    :ivar counter: Running 1-based item number for ordered levels.
+    :vartype counter: int
+    :ivar marker_len: Rendered width of the most recent marker at this level
+        (e.g. 2 for ``5.``), used to align any child level's indentation.
+    :vartype marker_len: int
     """
 
     raw_indent: int
@@ -64,11 +74,11 @@ def normalize_markdown(text: str) -> str:
     markers (``A.`` under an ordered parent) and under-indented sub-items
     (``  1.`` where three spaces are needed under ``5. ``).
 
-    Args:
-        text: Per-page markdown text from the OCR response.
-
-    Returns:
-        Markdown with normalised list markup; non-list content is unchanged.
+    :param text: Per-page markdown text from the OCR response. Required.
+    :type text: str
+    :return: Markdown with normalised list markup; non-list content is
+        unchanged.
+    :rtype: str
     """
     out: list[str] = []
     stack: list[_Level] = []

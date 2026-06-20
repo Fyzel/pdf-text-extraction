@@ -14,6 +14,8 @@ import re
 
 import fitz
 
+from pdf_extractor.pdf_errors import PDF_ERRORS
+
 # Annotation subtypes whose text we surface as a "comment". Purely visual marks
 # with no note (e.g. a highlight without a popup) are skipped because they carry
 # no content text.
@@ -25,11 +27,11 @@ _COMMENT_TYPES: frozenset[str] = frozenset(
 def _clean(value: str | None) -> str:
     """Collapse annotation text to a single Markdown-safe line.
 
-    Args:
-        value: Raw annotation field (``content`` or ``title``); may be ``None``.
-
-    Returns:
-        Whitespace-collapsed, trimmed single-line string.
+    :param value: Raw annotation field (``content`` or ``title``). Required, but
+        may be ``None``.
+    :type value: str | None
+    :return: Whitespace-collapsed, trimmed single-line string.
+    :rtype: str
     """
     return re.sub(r"\s+", " ", (value or "")).strip()
 
@@ -37,14 +39,14 @@ def _clean(value: str | None) -> str:
 def extract_comments_markdown(pdf_path: str, page_num: int) -> str:
     """Extract a page's text-bearing annotations as a Markdown comments section.
 
-    Args:
-        pdf_path: Path to the source PDF file.
-        page_num: 1-based page number.
-
-    Returns:
-        A ``## Comments`` Markdown block listing each comment as
-        ``- **Author** (Type): content``, in annotation order. Empty string when
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: str
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :return: A ``## Comments`` Markdown block listing each comment as
+        ``- **Author** (Type): content``, in annotation order; empty string when
         the page has no text-bearing annotations or cannot be read.
+    :rtype: str
     """
     items: list[tuple[str, str, str]] = []
     try:
@@ -62,7 +64,8 @@ def extract_comments_markdown(pdf_path: str, page_num: int) -> str:
                 items.append((_clean(info.get("title")), type_name, content))
         finally:
             doc.close()
-    except Exception:  # noqa: BLE001 — never let annotation extraction fail a page
+    except PDF_ERRORS:
+        # never let annotation extraction fail a page
         return ""
 
     if not items:

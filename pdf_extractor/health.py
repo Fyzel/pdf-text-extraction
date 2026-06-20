@@ -10,12 +10,11 @@ _TIMEOUT: int = 5
 def probe_instances(instances: list[OllamaInstance]) -> list[OllamaInstance]:
     """Return only instances that respond with HTTP 200 on GET /api/tags.
 
-    Args:
-        instances: Candidate Ollama instances to probe.
-
-    Returns:
-        Subset of ``instances`` that responded successfully within the timeout.
-        Empty list if all instances are unreachable.
+    :param instances: Candidate Ollama instances to probe. Required.
+    :type instances: list[pdf_extractor.config.OllamaInstance]
+    :return: Subset of ``instances`` that responded successfully within the
+        timeout. Empty list if all instances are unreachable.
+    :rtype: list[pdf_extractor.config.OllamaInstance]
     """
     live: list[OllamaInstance] = []
     for instance in instances:

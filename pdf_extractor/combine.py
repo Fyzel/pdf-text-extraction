@@ -17,16 +17,21 @@ def run_phase3(
     by a ``--- PAGE N ---`` separator. The output file is written to the same
     directory as the source PDF, named ``<stem>.md``.
 
-    Args:
-        pdf_path: Path to the original PDF file.
-        output_dir: Working directory containing ``pages/`` subdirectory.
-        page_count: Total page count for iteration range.
-        state: Shared AppState — read for per-page flags, written on success.
-        state_mgr: StateManager for atomic state persistence.
-
-    Returns:
-        Tuple of ``(success, error_message)``.
-        On success ``error_message`` is an empty string.
+    :param pdf_path: Path to the original PDF file. Required.
+    :type pdf_path: pathlib.Path
+    :param output_dir: Working directory containing the ``pages/``
+        subdirectory. Required.
+    :type output_dir: pathlib.Path
+    :param page_count: Total page count for the iteration range. Required.
+    :type page_count: int
+    :param state: Shared application state — read for per-page flags, written on
+        success. Required.
+    :type state: pdf_extractor.state.AppState
+    :param state_mgr: State manager for atomic state persistence. Required.
+    :type state_mgr: pdf_extractor.state.StateManager
+    :return: Tuple of ``(success, error_message)``; on success
+        ``error_message`` is an empty string.
+    :rtype: tuple[bool, str]
     """
     pages_dir: Path = output_dir / "pages"
     output_path: Path = pdf_path.parent / f"{pdf_path.stem}.md"

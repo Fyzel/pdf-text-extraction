@@ -1,17 +1,36 @@
 """Session-scoped PDF fixture generation via PyMuPDF."""
-import pytest
-import fitz
 from pathlib import Path
+
+import fitz
+import pytest
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 def _make_text_page(doc: fitz.Document, text: str) -> None:
+    """Append a text-only page carrying ``text`` to ``doc``.
+
+    :param doc: Open document to append the page to. Required.
+    :type doc: fitz.Document
+    :param text: Body text to place on the page. Required.
+    :type text: str
+    :return: ``None``.
+    :rtype: None
+    """
     page = doc.new_page(width=595, height=842)
     page.insert_text((72, 100), text, fontsize=12)
 
 
 def _make_diagram_page(doc: fitz.Document, text: str) -> None:
+    """Append a page with body text and a simple drawn diagram to ``doc``.
+
+    :param doc: Open document to append the page to. Required.
+    :type doc: fitz.Document
+    :param text: Body text to place on the page. Required.
+    :type text: str
+    :return: ``None``.
+    :rtype: None
+    """
     page = doc.new_page(width=595, height=842)
     page.insert_text((72, 100), text, fontsize=12)
     page.draw_rect(fitz.Rect(100, 200, 400, 500), color=(0, 0, 0), width=2)
@@ -19,6 +38,17 @@ def _make_diagram_page(doc: fitz.Document, text: str) -> None:
 
 
 def _make_table_page(doc: fitz.Document, cols: int, rows: int) -> None:
+    """Append a page with a drawn ``cols`` x ``rows`` ruled table to ``doc``.
+
+    :param doc: Open document to append the page to. Required.
+    :type doc: fitz.Document
+    :param cols: Number of table columns. Required.
+    :type cols: int
+    :param rows: Number of table rows. Required.
+    :type rows: int
+    :return: ``None``.
+    :rtype: None
+    """
     page = doc.new_page(width=595, height=842)
     col_w = 100
     row_h = 30
@@ -33,6 +63,15 @@ def _make_table_page(doc: fitz.Document, cols: int, rows: int) -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def generate_fixtures() -> None:
+    """Generate the shared sample PDFs under ``fixtures/`` once per session.
+
+    Creates ``simple``, ``multipage``, ``diagrams``, ``mixed``, ``tables``, and
+    ``corrupt`` PDFs if they do not already exist. Runs automatically for the
+    whole test session.
+
+    :return: ``None``.
+    :rtype: None
+    """
     FIXTURES_DIR.mkdir(exist_ok=True)
 
     # simple.pdf — 1 page, plain text

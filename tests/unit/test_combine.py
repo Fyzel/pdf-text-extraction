@@ -1,15 +1,37 @@
 """Unit tests for pdf_extractor/combine.py."""
-import pytest
 from pathlib import Path
 
 from pdf_extractor.combine import run_phase3
-from pdf_extractor.state import StateManager
+from pdf_extractor.state import AppState, StateManager
 
 
-def _setup(tmp_path: Path, page_count: int, ocr_done: list[int], ocr_failed: list[int] | None = None) -> tuple[Path, StateManager, object]:
-    out = tmp_path / "out"; out.mkdir()
-    pages = out / "pages"; pages.mkdir()
-    pdf = tmp_path / "doc.pdf"; pdf.touch()
+def _setup(
+    tmp_path: Path,
+    page_count: int,
+    ocr_done: list[int],
+    ocr_failed: list[int] | None = None,
+) -> tuple[Path, StateManager, AppState]:
+    """Seed page markdown and state for a combine test.
+
+    :param tmp_path: Base temporary directory. Required.
+    :type tmp_path: pathlib.Path
+    :param page_count: Total page count for the document. Required.
+    :type page_count: int
+    :param ocr_done: 1-based pages to mark OCR-done (with a markdown file).
+        Required.
+    :type ocr_done: list[int]
+    :param ocr_failed: 1-based pages to mark OCR-failed. Optional; defaults to
+        none.
+    :type ocr_failed: list[int] | None
+    :return: ``(pdf_path, state_manager, state)`` ready for :func:`run_phase3`.
+    :rtype: tuple[pathlib.Path, pdf_extractor.state.StateManager, pdf_extractor.state.AppState]
+    """
+    out = tmp_path / "out"
+    out.mkdir()
+    pages = out / "pages"
+    pages.mkdir()
+    pdf = tmp_path / "doc.pdf"
+    pdf.touch()
     sm = StateManager(out)
     st = sm.load_or_init(pdf, page_count)
     width = len(str(page_count))
@@ -27,6 +49,13 @@ def _setup(tmp_path: Path, page_count: int, ocr_done: list[int], ocr_failed: lis
 # ---------------------------------------------------------------------------
 
 def test_combine_creates_output_file(tmp_path):
+    """Combining writes the ``<stem>.md`` output and reports success.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 3, ocr_done=[1, 2, 3])
     ok, err = run_phase3(pdf, tmp_path / "out", 3, st, sm)
     assert ok
@@ -35,6 +64,13 @@ def test_combine_creates_output_file(tmp_path):
 
 
 def test_combine_page_separators(tmp_path):
+    """Each page gets a ``--- PAGE N ---`` separator.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 3, ocr_done=[1, 2, 3])
     run_phase3(pdf, tmp_path / "out", 3, st, sm)
     content = (tmp_path / "doc.md").read_text(encoding="utf-8")
@@ -44,6 +80,13 @@ def test_combine_page_separators(tmp_path):
 
 
 def test_combine_page_content_included(tmp_path):
+    """Each page's markdown content appears in the combined output.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 2, ocr_done=[1, 2])
     run_phase3(pdf, tmp_path / "out", 2, st, sm)
     content = (tmp_path / "doc.md").read_text(encoding="utf-8")
@@ -52,6 +95,13 @@ def test_combine_page_content_included(tmp_path):
 
 
 def test_combine_ascending_order(tmp_path):
+    """Pages appear in ascending order in the combined output.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 3, ocr_done=[1, 2, 3])
     run_phase3(pdf, tmp_path / "out", 3, st, sm)
     content = (tmp_path / "doc.md").read_text(encoding="utf-8")
@@ -66,6 +116,13 @@ def test_combine_ascending_order(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_combine_skips_ocr_failed(tmp_path):
+    """A page marked ``ocr_failed`` is omitted from the combined output.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 3, ocr_done=[1, 3], ocr_failed=[2])
     run_phase3(pdf, tmp_path / "out", 3, st, sm)
     content = (tmp_path / "doc.md").read_text(encoding="utf-8")
@@ -79,6 +136,13 @@ def test_combine_skips_ocr_failed(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_combine_output_sibling_to_pdf(tmp_path):
+    """The combined output is written beside the source PDF.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 1, ocr_done=[1])
     run_phase3(pdf, tmp_path / "out", 1, st, sm)
     assert (tmp_path / "doc.md").is_file()
@@ -89,12 +153,26 @@ def test_combine_output_sibling_to_pdf(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_combine_sets_combined_done(tmp_path):
+    """A successful combine sets ``combined_done`` on the state.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 2, ocr_done=[1, 2])
     run_phase3(pdf, tmp_path / "out", 2, st, sm)
     assert st.combined_done
 
 
 def test_combine_combined_done_persisted(tmp_path):
+    """``combined_done`` survives a reload and yields ``complete`` status.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 2, ocr_done=[1, 2])
     run_phase3(pdf, tmp_path / "out", 2, st, sm)
     sm2 = StateManager(tmp_path / "out")
@@ -108,6 +186,13 @@ def test_combine_combined_done_persisted(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_combine_write_error_returns_failure(tmp_path):
+    """A write failure is reported as ``(False, message)``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 1, ocr_done=[1])
     # make output path a directory so write_text fails
     (tmp_path / "doc.md").mkdir()
@@ -121,6 +206,13 @@ def test_combine_write_error_returns_failure(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_combine_ten_page_zero_padding(tmp_path):
+    """A ten-page document combines all ten zero-padded pages.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf, sm, st = _setup(tmp_path, 10, ocr_done=list(range(1, 11)))
     ok, _ = run_phase3(pdf, tmp_path / "out", 10, st, sm)
     assert ok
