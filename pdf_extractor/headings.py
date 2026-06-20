@@ -19,6 +19,9 @@ from difflib import SequenceMatcher
 
 import fitz
 
+from pdf_extractor.fences import next_fence_state
+from pdf_extractor.pdf_errors import PDF_ERRORS, open_guarded
+
 # A heading's font must exceed body size by this ratio. 1.15 cleanly separates
 # real headings (≈1.27× body and up) from near-body noise like a 12pt "Page N
 # of M" footer over 11pt body (1.09×).
@@ -29,20 +32,33 @@ _MATCH_RATIO: float = 0.85
 _MAX_LEVEL: int = 6
 
 _HEADING_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+")
-_FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
 _MARKER_RE = re.compile(r"[#*_`]+")
 _WS_RE = re.compile(r"\s+")
 
 
 def _norm(text: str) -> str:
-    """Normalise heading text for comparison: drop markers, case, punctuation."""
+    """Normalise heading text for comparison: drop markers, case, punctuation.
+
+    :param text: Raw heading or candidate line text. Required.
+    :type text: str
+    :return: Lower-cased text with Markdown markers, runs of whitespace, and
+        edge punctuation removed.
+    :rtype: str
+    """
     stripped: str = _MARKER_RE.sub("", text)
     stripped = _WS_RE.sub(" ", stripped).strip().lower()
     return stripped.strip(".,:;!?-—–")
 
 
 def _clean_text(line: str) -> str:
-    """Return a line's visible text with leading ``#`` and wrapping emphasis removed."""
+    """Return a line's visible text with leading ``#`` and wrapping emphasis removed.
+
+    :param line: A single Markdown line. Required.
+    :type line: str
+    :return: The visible text with any heading marker prefix and whole-line
+        wrapping emphasis stripped.
+    :rtype: str
+    """
     text: str = _HEADING_RE.sub("", line).strip()
     match = re.match(r"^(\*{1,3}|_{1,3})(.+?)\1$", text)
     if match and match.group(1)[0] not in match.group(2):
@@ -51,7 +67,16 @@ def _clean_text(line: str) -> str:
 
 
 def _line_size_text(line: dict) -> tuple[float, str]:
-    """Return a text line's dominant span size (by char count) and joined text."""
+    """Return a text line's dominant span size (by char count) and joined text.
+
+    :param line: A PyMuPDF text-line dict (a ``lines`` entry from
+        ``page.get_text("dict")``). Required.
+    :type line: dict
+    :return: ``(dominant_size, joined_text)`` where ``dominant_size`` is the
+        rounded span size covering the most characters (``0.0`` if the line has
+        no text), and ``joined_text`` is the line's concatenated span text.
+    :rtype: tuple[float, str]
+    """
     sizes: collections.Counter = collections.Counter()
     parts: list[str] = []
     for span in line.get("spans", []):
@@ -66,7 +91,14 @@ def _line_size_text(line: dict) -> tuple[float, str]:
 
 
 def _doc_span_sizes(doc: fitz.Document) -> collections.Counter:
-    """Tally span font sizes (rounded) by character count across all pages."""
+    """Tally span font sizes (rounded) by character count across all pages.
+
+    :param doc: An open PyMuPDF document. Required.
+    :type doc: fitz.Document
+    :return: Counter mapping each rounded span size to the total number of
+        non-whitespace characters rendered at that size.
+    :rtype: collections.Counter
+    """
     sizes: collections.Counter = collections.Counter()
     for page in doc:
         for block in page.get_text("dict")["blocks"]:
@@ -86,59 +118,69 @@ def extract_heading_scale(pdf_path: str) -> list[float]:
     ``_HEADING_RATIO`` times the body size, sorted descending so the index of a
     size is its level (0 → ``#``, 1 → ``##``, …).
 
-    Args:
-        pdf_path: Path to the source PDF file.
-
-    Returns:
-        Heading sizes in descending order. Empty if the PDF has no extractable
-        text (e.g. scanned/image-only) or no text larger than body.
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: str
+    :return: Heading sizes in descending order; empty if the PDF has no
+        extractable text (e.g. scanned/image-only) or no text larger than body.
+    :rtype: list[float]
     """
-    doc: fitz.Document | None = None
     try:
-        doc = fitz.open(pdf_path)
-        sizes: collections.Counter = _doc_span_sizes(doc)
-        if not sizes:
-            return []
-        body: float = sizes.most_common(1)[0][0]
-        heading_sizes = {s for s in sizes if s >= body * _HEADING_RATIO}
-        return sorted(heading_sizes, reverse=True)
-    except Exception:  # noqa: BLE001 — never let heading extraction fail a page
+        with open_guarded(pdf_path) as doc:
+            sizes: collections.Counter = _doc_span_sizes(doc)
+            if not sizes:
+                return []
+            body: float = sizes.most_common(1)[0][0]
+            heading_sizes = {s for s in sizes if s >= body * _HEADING_RATIO}
+            return sorted(heading_sizes, reverse=True)
+    except PDF_ERRORS:
+        # never let heading extraction fail a page
         return []
-    finally:
-        if doc is not None:
-            try:
-                doc.close()
-            except Exception:  # noqa: BLE001 — cleanup must not break the guarantee
-                pass
 
 
 def _page_headings(pdf_path: str, page_num: int, scale: list[float]) -> list[tuple[str, int]]:
-    """Return ``(normalised_text, level)`` for each heading line on a page."""
-    doc: fitz.Document | None = None
+    """Return ``(normalised_text, level)`` for each heading line on a page.
+
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: str
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :param scale: Document-wide heading size ranking from
+        :func:`extract_heading_scale`. Required.
+    :type scale: list[float]
+    :return: ``(normalised_text, level)`` for each line whose dominant size is
+        in ``scale``; empty if the page cannot be read.
+    :rtype: list[tuple[str, int]]
+    """
     try:
-        doc = fitz.open(pdf_path)
-        page: fitz.Page = doc[page_num - 1]
-        result: list[tuple[str, int]] = []
-        for block in page.get_text("dict")["blocks"]:
-            for line in block.get("lines", []):
-                size, text = _line_size_text(line)
-                norm: str = _norm(text)
-                if norm and size in scale:
-                    level: int = min(scale.index(size) + 1, _MAX_LEVEL)
-                    result.append((norm, level))
-        return result
-    except Exception:  # noqa: BLE001
+        with open_guarded(pdf_path) as doc:
+            page: fitz.Page = doc[page_num - 1]
+            result: list[tuple[str, int]] = []
+            for block in page.get_text("dict")["blocks"]:
+                for line in block.get("lines", []):
+                    size, text = _line_size_text(line)
+                    norm: str = _norm(text)
+                    if norm and size in scale:
+                        level: int = min(scale.index(size) + 1, _MAX_LEVEL)
+                        result.append((norm, level))
+            return result
+    except PDF_ERRORS:
+        # never let heading extraction fail a page
         return []
-    finally:
-        if doc is not None:
-            try:
-                doc.close()
-            except Exception:  # noqa: BLE001 — cleanup must not break the guarantee
-                pass
 
 
 def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:
-    """Return the level of the best-matching PDF heading, or None if none match."""
+    """Return the level of the best-matching PDF heading, or None if none match.
+
+    :param candidate: Normalised candidate line text (from :func:`_norm`).
+        Required.
+    :type candidate: str
+    :param headings: ``(normalised_text, level)`` pairs for the page's PDF
+        headings. Required.
+    :type headings: list[tuple[str, int]]
+    :return: The level of the heading whose similarity to ``candidate`` is
+        highest and at least ``_MATCH_RATIO``, or ``None`` if none qualify.
+    :rtype: int | None
+    """
     best_level: int | None = None
     best_ratio: float = _MATCH_RATIO
     for norm, level in headings:
@@ -147,21 +189,6 @@ def _match_level(candidate: str, headings: list[tuple[str, int]]) -> int | None:
             best_ratio = ratio
             best_level = level
     return best_level
-
-
-def _closes_fence(run: str, line: str, opening: str) -> bool:
-    """Return True if ``line`` is a valid CommonMark close for ``opening``.
-
-    A closing fence uses the same character as the opening run, is at least as
-    long, and carries no info string (only the fence and optional surrounding
-    whitespace).
-
-    Args:
-        run: The fence run captured from ``line`` (group 1 of :data:`_FENCE_RE`).
-        line: Candidate line, already known to match :data:`_FENCE_RE`.
-        opening: The opening fence run (e.g. ```` ``` ```` or ``~~~~``).
-    """
-    return run[0] == opening[0] and len(run) >= len(opening) and line.strip() == run
 
 
 def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[float]) -> str:
@@ -182,14 +209,18 @@ def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[flo
     the text is returned untouched so the model's own markup stands as a
     fallback.
 
-    Args:
-        text: Per-page Markdown text from the OCR response.
-        pdf_path: Path to the source PDF, or ``None`` when unavailable.
-        page_num: 1-based page number.
-        scale: Document-wide heading size ranking from ``extract_heading_scale``.
-
-    Returns:
-        Page text with corrected heading markup.
+    :param text: Per-page Markdown text from the OCR response. Required.
+    :type text: str
+    :param pdf_path: Path to the source PDF. Required, but may be ``None`` when
+        unavailable (the text is then returned untouched).
+    :type pdf_path: str | None
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :param scale: Document-wide heading size ranking from
+        :func:`extract_heading_scale`. Required (may be empty).
+    :type scale: list[float]
+    :return: Page text with corrected heading markup.
+    :rtype: str
     """
     if pdf_path is None or not scale:
         return text
@@ -199,16 +230,10 @@ def fix_headings(text: str, pdf_path: str | None, page_num: int, scale: list[flo
     out: list[str] = []
     fence: str | None = None  # opening fence run while inside a code block
     for line in text.split("\n"):
-        fence_match = _FENCE_RE.match(line)
-        if fence_match:
-            run: str = fence_match.group(1)
-            if fence is None:
-                fence = run
-            elif _closes_fence(run, line, fence):
-                fence = None
-            out.append(line)
-            continue
-        if fence is not None:
+        new_fence, is_fence = next_fence_state(line, fence)
+        if is_fence or fence is not None:
+            # A fence delimiter, or any line inside an open block: emit verbatim.
+            fence = new_fence
             out.append(line)
             continue
         is_heading: bool = bool(_HEADING_RE.match(line))

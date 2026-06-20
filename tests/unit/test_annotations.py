@@ -7,7 +7,13 @@ from pdf_extractor.annotations import extract_comments_markdown
 
 
 def _pdf_with_annotations(path: Path) -> None:
-    """Write a one-page PDF with a sticky note and a highlight-with-note."""
+    """Write a one-page PDF with a sticky note and a highlight-with-note.
+
+    :param path: Destination path for the PDF. Required.
+    :type path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     doc = fitz.open()
     page = doc.new_page(width=300, height=300)
     page.insert_text((50, 50), "body text")
@@ -25,6 +31,13 @@ def _pdf_with_annotations(path: Path) -> None:
 
 
 def test_extract_lists_text_bearing_annotations(tmp_path):
+    """Text-bearing annotations are rendered as a ``## Comments`` section.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     pdf = tmp_path / "annotated.pdf"
     _pdf_with_annotations(pdf)
     md = extract_comments_markdown(str(pdf), 1)
@@ -34,6 +47,13 @@ def test_extract_lists_text_bearing_annotations(tmp_path):
 
 
 def test_extract_empty_when_no_annotations(tmp_path):
+    """A page with no annotations yields an empty string.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     doc = fitz.open()
     doc.new_page(width=200, height=200)
     pdf = tmp_path / "plain.pdf"
@@ -43,6 +63,13 @@ def test_extract_empty_when_no_annotations(tmp_path):
 
 
 def test_extract_skips_contentless_markup(tmp_path):
+    """A markup annotation with no note text is skipped.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     # A highlight with no popup note carries no comment text — skip it.
     doc = fitz.open()
     page = doc.new_page(width=200, height=200)
@@ -55,6 +82,13 @@ def test_extract_skips_contentless_markup(tmp_path):
 
 
 def test_extract_unknown_author_label(tmp_path):
+    """An annotation without an author renders as ``**Unknown**``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     doc = fitz.open()
     page = doc.new_page(width=200, height=200)
     note = page.add_text_annot((50, 50), "anonymous note")
@@ -67,6 +101,13 @@ def test_extract_unknown_author_label(tmp_path):
 
 
 def test_extract_bad_pdf_returns_empty(tmp_path):
+    """A corrupt PDF yields an empty string instead of raising.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
     bad = tmp_path / "corrupt.pdf"
     bad.write_bytes(b"not a real pdf \x00\x01")
     assert extract_comments_markdown(str(bad), 1) == ""

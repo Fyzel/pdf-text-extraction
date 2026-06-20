@@ -1,0 +1,15 @@
+[BASIC]
+# do_GET / do_POST are dispatch method names mandated by
+# http.server.BaseHTTPRequestHandler; they cannot be snake_case.
+good-names = do_GET,do_POST
+
+[FORMAT]
+max-line-length = 100
+
+[DESIGN]
+max-args = 12
+max-positional-arguments = 12
+max-locals = 40
+max-branches = 20
+max-statements = 70
+max-returns = 8

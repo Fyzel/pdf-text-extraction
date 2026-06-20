@@ -18,6 +18,8 @@ import re
 
 import fitz
 
+from pdf_extractor.pdf_errors import PDF_ERRORS
+
 # Existing Markdown link spans and inline-code spans whose contents must not be
 # re-linked. Used to carve a line into "protected" and "plain" segments.
 _PROTECTED = re.compile(r"\[[^\]]*\]\([^)]*\)|`[^`]*`")
@@ -29,11 +31,10 @@ def _escape_anchor(text: str) -> str:
     Backslashes are escaped first so the escapes added for ``[`` and ``]`` are
     not themselves doubled.
 
-    Args:
-        text: Raw anchor text.
-
-    Returns:
-        Anchor text safe to place inside ``[...]``.
+    :param text: Raw anchor text. Required.
+    :type text: str
+    :return: Anchor text safe to place inside ``[...]``.
+    :rtype: str
     """
     return text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 
@@ -45,11 +46,10 @@ def _escape_uri(uri: str) -> str:
     truncate the destination; CommonMark renders ``\\(`` / ``\\)`` as literal
     parentheses, keeping the URL intact.
 
-    Args:
-        uri: Raw link target.
-
-    Returns:
-        URI safe to place inside ``(...)``.
+    :param uri: Raw link target. Required.
+    :type uri: str
+    :return: URI safe to place inside ``(...)``.
+    :rtype: str
     """
     return uri.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
@@ -60,14 +60,14 @@ def extract_links(pdf_path: str, page_num: int) -> list[tuple[str, str]]:
     Links are returned in reading order (top-to-bottom, then left-to-right) so a
     later left-to-right splice consumes them in the order they appear in prose.
 
-    Args:
-        pdf_path: Path to the source PDF file.
-        page_num: 1-based page number.
-
-    Returns:
-        ``(anchor_text, uri)`` for each external URI link whose rectangle covers
-        non-empty text. Empty list when the page has no such links or cannot be
-        read.
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: str
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :return: ``(anchor_text, uri)`` for each external URI link whose rectangle
+        covers non-empty text; empty list when the page has no such links or
+        cannot be read.
+    :rtype: list[tuple[str, str]]
     """
     items: list[tuple[float, float, str, str]] = []
     try:
@@ -87,7 +87,8 @@ def extract_links(pdf_path: str, page_num: int) -> list[tuple[str, str]]:
                 items.append((rect.y0, rect.x0, anchor, uri))
         finally:
             doc.close()
-    except Exception:  # noqa: BLE001 — never let link extraction fail a page
+    except PDF_ERRORS:
+        # never let link extraction fail a page
         return []
 
     items.sort(key=lambda it: (round(it[0]), round(it[1])))
@@ -102,12 +103,13 @@ def _splice_plain(segment: str, pending: list[tuple[str, str]]) -> str:
     inserted link's own text) is never re-matched. Consumed pairs are removed
     from ``pending`` in place so they are not reused on later segments/lines.
 
-    Args:
-        segment: A run of plain (non-link, non-code) Markdown text.
-        pending: Remaining ``(anchor, uri)`` pairs in reading order; mutated.
-
-    Returns:
-        The segment with matched anchors rewritten as ``[anchor](uri)``.
+    :param segment: A run of plain (non-link, non-code) Markdown text. Required.
+    :type segment: str
+    :param pending: Remaining ``(anchor, uri)`` pairs in reading order.
+        Required; mutated in place as pairs are consumed.
+    :type pending: list[tuple[str, str]]
+    :return: The segment with matched anchors rewritten as ``[anchor](uri)``.
+    :rtype: str
     """
     out: list[str] = []
     cursor: int = 0
@@ -137,14 +139,15 @@ def splice_links(text: str, links: list[tuple[str, str]]) -> str:
     Markdown links, and inline-code spans are left untouched. A link whose anchor
     text is not found in the page text is dropped (no synthetic text is added).
 
-    Args:
-        text: Per-page Markdown text (after reflow, list, and table processing).
-        links: ``(anchor, uri)`` pairs from :func:`extract_links`, in reading
-            order.
-
-    Returns:
-        Page text with anchor text rewritten as links. Unchanged if ``links`` is
-        empty.
+    :param text: Per-page Markdown text (after reflow, list, and table
+        processing). Required.
+    :type text: str
+    :param links: ``(anchor, uri)`` pairs from :func:`extract_links`, in reading
+        order. Required (may be empty).
+    :type links: list[tuple[str, str]]
+    :return: Page text with anchor text rewritten as links; unchanged if
+        ``links`` is empty.
+    :rtype: str
     """
     if not links:
         return text

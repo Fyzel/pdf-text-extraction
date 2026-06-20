@@ -15,6 +15,8 @@ import re
 
 import fitz
 
+from pdf_extractor.pdf_errors import PDF_ERRORS, open_guarded
+
 # Silence the one-time "Consider using the pymupdf_layout package …" notice that
 # find_tables prints to stdout; it would otherwise clutter every run.
 if hasattr(fitz, "no_recommend_layout"):
@@ -27,12 +29,11 @@ def _clean_cell(value: str | None) -> str:
     Newlines inside a cell become spaces, runs of whitespace collapse to one,
     and pipe characters are escaped so they do not break the table.
 
-    Args:
-        value: Raw cell text from ``find_tables`` (may be ``None`` for an
-            empty cell).
-
-    Returns:
-        Cleaned single-line cell string.
+    :param value: Raw cell text from ``find_tables``. Required, but may be
+        ``None`` for an empty cell.
+    :type value: str | None
+    :return: Cleaned single-line cell string.
+    :rtype: str
     """
     text: str = (value or "").replace("\n", " ")
     text = re.sub(r"\s+", " ", text).strip()
@@ -45,13 +46,12 @@ def _render_table(rows: list[list[str]]) -> str:
     The first row is treated as the header. Columns are padded to their widest
     cell so the output matches the project's hand-authored table fixtures.
 
-    Args:
-        rows: Table contents as a list of rows, each a list of cell strings.
-            All rows are assumed to share the same column count.
-
-    Returns:
-        Markdown table string (no trailing newline). Empty string if ``rows``
-        is empty.
+    :param rows: Table contents as a list of rows, each a list of cell strings.
+        Required. All rows are assumed to share the same column count.
+    :type rows: list[list[str]]
+    :return: Markdown table string (no trailing newline); empty string if
+        ``rows`` is empty.
+    :rtype: str
     """
     if not rows:
         return ""
@@ -65,6 +65,13 @@ def _render_table(rows: list[list[str]]) -> str:
     ]
 
     def _fmt(cells: list[str]) -> str:
+        """Render one row's cells as a padded Markdown table line.
+
+        :param cells: Cleaned cell strings for the row. Required.
+        :type cells: list[str]
+        :return: A ``| a | b |`` line with each cell padded to its column width.
+        :rtype: str
+        """
         return "| " + " | ".join(cells[c].ljust(widths[c]) for c in range(cols)) + " |"
 
     header: str = _fmt(norm[0])
@@ -76,24 +83,23 @@ def _render_table(rows: list[list[str]]) -> str:
 def extract_tables_markdown(pdf_path: str, page_num: int) -> list[str]:
     """Extract every table on a page as aligned Markdown, top-to-bottom.
 
-    Args:
-        pdf_path: Path to the source PDF file.
-        page_num: 1-based page number.
-
-    Returns:
-        List of Markdown table strings in page reading order. Empty if the page
-        has no detectable tables (e.g. a scanned/image-only page).
+    :param pdf_path: Path to the source PDF file. Required.
+    :type pdf_path: str
+    :param page_num: 1-based page number. Required.
+    :type page_num: int
+    :return: List of Markdown table strings in page reading order; empty if the
+        page has no detectable tables (e.g. a scanned/image-only page).
+    :rtype: list[str]
     """
-    doc: fitz.Document = fitz.open(pdf_path)
     try:
-        page: fitz.Page = doc[page_num - 1]
-        found = page.find_tables()
-        tables = sorted(found.tables, key=lambda t: (round(t.bbox[1]), round(t.bbox[0])))
-        return [_render_table(t.extract()) for t in tables if t.row_count]
-    except Exception:  # noqa: BLE001 — never let table extraction fail a page
+        with open_guarded(pdf_path) as doc:
+            page: fitz.Page = doc[page_num - 1]
+            found = page.find_tables()
+            tables = sorted(found.tables, key=lambda t: (round(t.bbox[1]), round(t.bbox[0])))
+            return [_render_table(t.extract()) for t in tables if t.row_count]
+    except PDF_ERRORS:
+        # never let table extraction fail a page
         return []
-    finally:
-        doc.close()
 
 
 def _table_blocks(lines: list[str]) -> list[tuple[int, int]]:
@@ -102,11 +108,10 @@ def _table_blocks(lines: list[str]) -> list[tuple[int, int]]:
     A table block is a maximal run of lines whose first non-space character is a
     pipe (``|``).
 
-    Args:
-        lines: Page text split into lines.
-
-    Returns:
-        List of half-open ``(start, end)`` index ranges, in order.
+    :param lines: Page text split into lines. Required.
+    :type lines: list[str]
+    :return: List of half-open ``(start, end)`` index ranges, in order.
+    :rtype: list[tuple[int, int]]
     """
     blocks: list[tuple[int, int]] = []
     i: int = 0
@@ -130,13 +135,14 @@ def splice_tables(text: str, tables_md: list[str]) -> str:
     (covers the rare case where the model omits a table entirely). Model blocks
     beyond the number of extracted tables are left untouched.
 
-    Args:
-        text: Per-page Markdown text from the OCR response.
-        tables_md: Extracted Markdown tables for the page, in reading order.
-
-    Returns:
-        Page text with table blocks substituted. Unchanged if ``tables_md`` is
-        empty.
+    :param text: Per-page Markdown text from the OCR response. Required.
+    :type text: str
+    :param tables_md: Extracted Markdown tables for the page, in reading order.
+        Required (may be empty).
+    :type tables_md: list[str]
+    :return: Page text with table blocks substituted; unchanged if ``tables_md``
+        is empty.
+    :rtype: str
     """
     if not tables_md:
         return text
