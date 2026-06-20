@@ -3,8 +3,8 @@
 A command line tool that converts PDF files to Markdown using AI-powered OCR via [Ollama](https://ollama.com). Each page is extracted as text, diagrams are saved as separate images with Markdown references, and tables are rendered as Markdown table syntax — all combined into a single `.md` file.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![CI (main)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/tests.yml?branch=main&label=CI%20%28main%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
-[![CI (dev)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/tests.yml?branch=dev&label=CI%20%28dev%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/tests.yml)
+[![CI (main)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/ci-tests.yml?branch=main&label=CI%20%28main%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/ci-tests.yml)
+[![CI (dev)](https://img.shields.io/github/actions/workflow/status/Fyzel/pdf-text-extraction/ci-tests.yml?branch=dev&label=CI%20%28dev%29)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/ci-tests.yml)
 [![Pylint](https://img.shields.io/badge/linting-pylint-brightgreen?logo=python&logoColor=white)](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/ci-tests.yml)
 [![CodeQL](https://github.com/Fyzel/pdf-text-extraction/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/Fyzel/pdf-text-extraction/security/code-scanning)
 [![Dependabot](https://img.shields.io/badge/Dependabot-enabled-2cbe4e?logo=dependabot)](https://github.com/Fyzel/pdf-text-extraction/network/updates)
