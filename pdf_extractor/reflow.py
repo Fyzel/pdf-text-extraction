@@ -26,9 +26,39 @@ _TABLE_RE = re.compile(r"^[ \t]*\|")
 _QUOTE_RE = re.compile(r"^[ \t]*>")
 _HR_RE = re.compile(r"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 
+# A table-of-contents / index line: visible text followed by a trailing page
+# reference — an arabic page number or a lowercase front-matter roman numeral
+# (i…lxxxix). These are complete one-per-line entries, not soft-wrapped prose,
+# so reflow must not join them into a running paragraph (issue #85). The roman
+# form is deliberately narrow (no m/c/d, length ≥ 2) to avoid matching ordinary
+# words like "did" or "mix" or a sentence ending in the pronoun "I".
+_ROMAN_PAGE_RE = re.compile(r"^l?x{0,3}(?:ix|iv|v?i{0,3})$")
+_INDEX_TAIL_RE = re.compile(r"^[ \t]*\S.*\s(\S+?)[ \t]*$")
+
 # A paragraph fully wrapped in a single run of 1–3 ``*`` or ``_`` with no
 # interior marker of the same kind — i.e. stray whole-paragraph emphasis.
 _WRAP_RE = re.compile(r"^(\*{1,3}|_{1,3})(\S.*?\S|\S)\1$")
+
+
+def _is_index_entry(line: str) -> bool:
+    """Return whether a line is a table-of-contents / index entry.
+
+    An index entry is visible text followed by a trailing page reference — an
+    arabic page number or a short lowercase roman numeral (front matter). Such
+    lines are complete on their own and must not be reflowed into the next line.
+
+    :param line: A single line of page Markdown. Required.
+    :type line: str
+    :return: ``True`` if the line ends with a page-reference token.
+    :rtype: bool
+    """
+    match = _INDEX_TAIL_RE.match(line)
+    if match is None:
+        return False
+    token: str = match.group(1)
+    if token.isdigit():
+        return True
+    return len(token) >= 2 and bool(_ROMAN_PAGE_RE.match(token))
 
 
 def _is_boundary(line: str) -> bool:
@@ -37,7 +67,8 @@ def _is_boundary(line: str) -> bool:
     :param line: A single line of page Markdown. Required.
     :type line: str
     :return: ``True`` for a blank line, heading, list item, table row,
-        blockquote, fence, or thematic break — anything that ends a paragraph.
+        blockquote, fence, thematic break, or table-of-contents entry — anything
+        that ends a paragraph.
     :rtype: bool
     """
     if not line.strip():
@@ -49,6 +80,7 @@ def _is_boundary(line: str) -> bool:
         or _QUOTE_RE.match(line)
         or FENCE_RE.match(line)
         or _HR_RE.match(line)
+        or _is_index_entry(line)
     )
 
 

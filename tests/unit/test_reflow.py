@@ -215,3 +215,68 @@ def test_empty_input():
     :rtype: None
     """
     assert reflow_prose("") == ""
+
+
+# ---------------------------------------------------------------------------
+# Index / table-of-contents entries — not reflowed (issue #85)
+# ---------------------------------------------------------------------------
+
+def test_toc_entries_not_merged():
+    """Consecutive table-of-contents lines each stay on their own line.
+
+    Each entry ends with a page reference (roman front-matter or arabic), so it
+    is a complete line, not soft-wrapped prose, and must not be joined.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = (
+        "Foreword xi\n"
+        "Preface xii\n"
+        "Chapter 1: Introduction 1\n"
+        "Chapter 2: Hassling AI Prompts with Humor 9"
+    )
+    assert reflow_prose(src) == src
+
+
+def test_arabic_page_reference_is_boundary():
+    """A line ending in an arabic page number is not merged with the next.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    assert reflow_prose("TOC 4 2\nTOC 5 5") == "TOC 4 2\nTOC 5 5"
+
+
+def test_roman_page_reference_is_boundary():
+    """A line ending in a lowercase roman numeral is not merged with the next.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    assert reflow_prose("Acknowledgements xvi\nAppendix xvii") == (
+        "Acknowledgements xvi\nAppendix xvii"
+    )
+
+
+def test_roman_lookalike_word_still_reflows():
+    """A prose line ending in a roman-looking word is still treated as prose.
+
+    Words like ``mix`` or ``did`` are not page references, so the soft-wrapped
+    line is joined as normal.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    assert reflow_prose("stir the mix\nuntil smooth") == "stir the mix until smooth"
+
+
+def test_single_letter_pronoun_does_not_block_reflow():
+    """A prose line ending in the pronoun ``I`` still reflows.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    assert reflow_prose("that is what I\nbelieve today") == (
+        "that is what I believe today"
+    )
