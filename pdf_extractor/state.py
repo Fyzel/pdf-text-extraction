@@ -34,6 +34,13 @@ class PageState:
     :vartype ocr_failed: bool
     :ivar diagram_count: Number of diagrams cropped from this page.
     :vartype diagram_count: int
+    :ivar ocr_response: Raw ``response`` string returned by Ollama for this page,
+        stored verbatim (may include code fences). Persisted for debugging the
+        model's output and as groundwork for resuming the post-OCR pipeline
+        (reflow/headings/etc.) without re-calling Ollama; no code consumes it
+        yet. ``None`` when no Ollama call was made (blank page) or the page
+        failed all retries.
+    :vartype ocr_response: str | None
     """
 
     image_done: bool = False
@@ -41,6 +48,7 @@ class PageState:
     ocr_done: bool = False
     ocr_failed: bool = False
     diagram_count: int = 0
+    ocr_response: str | None = None
 
 
 @dataclass
@@ -126,7 +134,7 @@ class StateManager:
 
         Valid keyword arguments match :class:`PageState` fields:
         ``image_done``, ``image_failed``, ``ocr_done``, ``ocr_failed``,
-        ``diagram_count``.
+        ``diagram_count``, ``ocr_response``.
 
         :param state: Shared application state to mutate. Required.
         :type state: AppState
@@ -148,7 +156,8 @@ class StateManager:
         """Clear all processing flags for the given pages and persist atomically.
 
         For each page, resets ``image_done``, ``image_failed``, ``ocr_done``,
-        and ``ocr_failed`` to ``False`` and ``diagram_count`` to ``0``. Also
+        and ``ocr_failed`` to ``False``, ``diagram_count`` to ``0``, and
+        ``ocr_response`` to ``None``. Also
         clears ``combined_done`` on the whole state so Phase 3 reassembles. Used
         by the ``--rerun-pages`` feature to force reprocessing of specific pages.
 
@@ -167,6 +176,7 @@ class StateManager:
                 page.ocr_done = False
                 page.ocr_failed = False
                 page.diagram_count = 0
+                page.ocr_response = None
             state.combined_done = False
             self._write(state)
 

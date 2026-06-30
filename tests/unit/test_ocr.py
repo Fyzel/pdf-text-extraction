@@ -199,12 +199,59 @@ def test_ocr_text_only(tmp_path):
         pages = tmp_path / "pages"
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, err, dcnt = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1)
+        _, ok, err, dcnt, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1)
         assert ok
         assert err == ""
         assert dcnt == 0
         assert (pages / "page_1.md").is_file()
         assert (pages / "page_1.md").read_text() == "Page content"
+    finally:
+        server.shutdown()
+
+
+def test_ocr_returns_raw_response(tmp_path):
+    """A successful OCR returns the raw Ollama ``response`` string verbatim.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
+    body = {"text": "Page content", "diagrams": []}
+    server = start_ollama_mock(19501, body)
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19501", "m")
+        pages = tmp_path / "pages"
+        pages.mkdir()
+        _make_jpeg(pages / "page_1.jpg")
+        _, ok, _, _, resp = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1)
+        assert ok
+        assert resp == json.dumps(body)
+    finally:
+        server.shutdown()
+
+
+def test_ocr_blank_page_response_none(tmp_path):
+    """A blank page makes no Ollama call, so its returned response is ``None``.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
+    server = start_ollama_mock(19502, {"text": "unused", "diagrams": []})
+    try:
+        inst = OllamaInstance("http://127.0.0.1:19502", "m")
+        pages = tmp_path / "pages"
+        pages.mkdir()
+        # An all-white page renders blank and short-circuits OCR.
+        blank = fitz.open()
+        blank.new_page(width=400, height=300)
+        blank[0].get_pixmap(matrix=fitz.Matrix(2, 2)).save(str(pages / "page_1.jpg"))
+        blank.close()
+        _, ok, _, _, resp = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1)
+        assert ok
+        assert resp is None
     finally:
         server.shutdown()
 
@@ -225,7 +272,7 @@ def test_ocr_with_diagrams(tmp_path):
         pages.mkdir()
         diags = tmp_path / "diagrams"
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, _, dcnt = _ocr_page_with_retry(1, [inst], pages, diags, 1)
+        _, ok, _, dcnt, _ = _ocr_page_with_retry(1, [inst], pages, diags, 1)
         assert ok
         assert dcnt == 1
         assert (diags / "page_1_diagram_1.jpg").is_file()
@@ -251,7 +298,7 @@ def test_ocr_table_stays_in_text(tmp_path):
         pages.mkdir()
         diags = tmp_path / "diagrams"
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, _, dcnt = _ocr_page_with_retry(1, [inst], pages, diags, 1)
+        _, ok, _, dcnt, _ = _ocr_page_with_retry(1, [inst], pages, diags, 1)
         assert ok
         assert dcnt == 0
         assert not diags.exists()
@@ -274,7 +321,7 @@ def test_ocr_invalid_json_marks_failed(tmp_path):
         pages = tmp_path / "pages"
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, err, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1)
+        _, ok, err, _, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1)
         assert not ok
         assert err != ""
     finally:
@@ -321,7 +368,7 @@ def test_ocr_retries_all_instances(tmp_path):
         pages = tmp_path / "pages"
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, _, _ = _ocr_page_with_retry(1, insts, pages, tmp_path / "d", 1)
+        _, ok, _, _, _ = _ocr_page_with_retry(1, insts, pages, tmp_path / "d", 1)
         assert not ok
         assert sorted(tried) == [19504, 19505]
     finally:
@@ -402,7 +449,7 @@ def test_ocr_prefers_pdf_rects_over_model_bbox(tmp_path):
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
         diags = tmp_path / "diagrams"
-        _, ok, _, dcnt = _ocr_page_with_retry(1, [inst], pages, diags, 1, pdf_path=pdf)
+        _, ok, _, dcnt, _ = _ocr_page_with_retry(1, [inst], pages, diags, 1, pdf_path=pdf)
         assert ok
         assert dcnt == 1
         crop = diags / "page_1_diagram_1.jpg"
@@ -433,7 +480,7 @@ def test_ocr_falls_back_to_model_bbox_for_vector_figure(tmp_path):
         pages.mkdir()
         _make_jpeg(pages / "page_2.jpg")
         diags = tmp_path / "diagrams"
-        _, ok, _, dcnt = _ocr_page_with_retry(2, [inst], pages, diags, 2, pdf_path=pdf)
+        _, ok, _, dcnt, _ = _ocr_page_with_retry(2, [inst], pages, diags, 2, pdf_path=pdf)
         assert ok
         assert dcnt == 1
         assert (diags / "page_2_diagram_1.jpg").is_file()
@@ -500,7 +547,7 @@ def test_ocr_timeout_passed_through(tmp_path):
         pages = tmp_path / "pages"
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, _, _ = _ocr_page_with_retry(
+        _, ok, _, _, _ = _ocr_page_with_retry(
             1, [inst], pages, tmp_path / "d", 1, ocr_timeout=30
         )
         assert ok
@@ -690,7 +737,7 @@ def test_ocr_skips_blank_page(tmp_path):
     pages = tmp_path / "pages"
     pages.mkdir()
     _make_white_jpeg(pages / "page_1.jpg")
-    _, ok, err, dcnt = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf)
+    _, ok, err, dcnt, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf)
     assert ok
     assert err == ""
     assert dcnt == 0
@@ -732,7 +779,7 @@ def test_ocr_appends_comments_when_enabled(tmp_path):
         pages = tmp_path / "pages"
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, _, _ = _ocr_page_with_retry(
+        _, ok, _, _, _ = _ocr_page_with_retry(
             1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf, include_comments=True
         )
         assert ok
@@ -760,7 +807,7 @@ def test_ocr_omits_comments_by_default(tmp_path):
         pages = tmp_path / "pages"
         pages.mkdir()
         _make_jpeg(pages / "page_1.jpg")
-        _, ok, _, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf)
+        _, ok, _, _, _ = _ocr_page_with_retry(1, [inst], pages, tmp_path / "d", 1, pdf_path=pdf)
         assert ok
         md = (pages / "page_1.md").read_text(encoding="utf-8")
         assert "## Comments" not in md

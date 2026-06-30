@@ -41,6 +41,7 @@ Rules:
 - Write each paragraph as a SINGLE line. Do not insert line breaks inside a paragraph to mirror how the text wraps in the image.
 - Do NOT wrap text in emphasis markers (* or _) unless it is visually bold or italic. Regular body text must have no emphasis.
 - Use heading markup (#, ##, ###) only for actual headings, matching the visual hierarchy. Ordinary body sentences are never headings.
+- On a table-of-contents or index page, write each entry on its own line as plain text and keep the page number shown at the right edge of that entry on the same line (for example `Foreword xi`). Never use heading markup for contents entries, even when they look bold or indented, and never omit their page numbers.
 - diagrams: pixel bounding boxes for figures, charts, illustrations only. Empty array if none. Boxes must be tight — no surrounding whitespace, margins, or text. Do not pad or expand beyond the visible edge of the figure.
 - tables: render as markdown table syntax inside the text field. Do NOT add tables to diagrams.
 - Return ONLY the JSON object. No explanations, no code fences, no other text.\
@@ -354,7 +355,7 @@ def _ocr_page_with_retry(
     include_comments: bool = False,
     heading_scale: list[float] | None = None,
     include_links: bool = False,
-) -> tuple[int, bool, str, int]:
+) -> tuple[int, bool, str, int, str | None]:
     """Attempt OCR on one page, trying each instance in order until one succeeds.
 
     On success, writes the per-page markdown file and any cropped diagram images.
@@ -410,10 +411,12 @@ def _ocr_page_with_retry(
         the page's plain anchor text as Markdown links using the PDF's URI
         links. Optional; defaults to ``False``.
     :type include_links: bool
-    :return: Tuple of ``(page_num, success, error_message, diagram_count)``;
-        ``error_message`` is empty on success and ``diagram_count`` is 0 on
-        failure.
-    :rtype: tuple[int, bool, str, int]
+    :return: Tuple of ``(page_num, success, error_message, diagram_count,
+        ocr_response)``; ``error_message`` is empty on success and
+        ``diagram_count`` is 0 on failure. ``ocr_response`` is the raw Ollama
+        ``response`` string for the page, or ``None`` for a blank page (no
+        Ollama call) or a page that failed all retries.
+    :rtype: tuple[int, bool, str, int, str | None]
     """
     stem: str = _page_stem(page_num, page_count)
     jpeg_path: Path = pages_dir / f"{stem}.jpg"
@@ -435,7 +438,7 @@ def _ocr_page_with_retry(
         if comments_md:
             body = f"{_BLANK_PAGE_MARKER}\n\n{comments_md}"
         md_path.write_text(body, encoding="utf-8")
-        return page_num, True, "", 0
+        return page_num, True, "", 0, None
 
     for instance in instances_ordered:
         try:
@@ -525,9 +528,9 @@ def _ocr_page_with_retry(
                 parts += ["", comments_md]
         md_path.write_text("\n".join(parts), encoding="utf-8")
 
-        return page_num, True, "", cropped_count
+        return page_num, True, "", cropped_count, raw
 
-    return page_num, False, last_error, 0
+    return page_num, False, last_error, 0, None
 
 
 def run_phase2(
@@ -630,10 +633,11 @@ def run_phase2(
             for p in pending
         }
         for future in as_completed(futures):
-            page_num, success, error, diagram_count = future.result()
+            page_num, success, error, diagram_count, ocr_response = future.result()
             if success:
                 state_mgr.update_page(
-                    state, page_num, ocr_done=True, diagram_count=diagram_count
+                    state, page_num, ocr_done=True, diagram_count=diagram_count,
+                    ocr_response=ocr_response,
                 )
             else:
                 print(f"  Page {page_num}: OCR failed — {error}")

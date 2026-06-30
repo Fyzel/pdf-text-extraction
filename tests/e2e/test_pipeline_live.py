@@ -399,3 +399,39 @@ def test_live_006_three_page_text_diagram_table_bullets(tmp_path, monkeypatch, l
     reference = DATA / "images" / "test-006-diagram1.png"
     sim = _image_similarity(extracted[0], reference)
     assert sim >= 0.75, f"Extracted diagram similarity to reference is only {sim:.2%}"
+
+
+# ---------------------------------------------------------------------------
+# test-008 — 1 page, table-of-contents (reflow must not merge entries)
+# ---------------------------------------------------------------------------
+
+def test_live_008_markdown_reflow(tmp_path, monkeypatch, live_config):
+    """A table-of-contents page keeps each entry on its own line (issue #85).
+
+    Each TOC entry ends with a page reference, so reflow must not join them into
+    one running paragraph.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :param monkeypatch: pytest monkeypatch fixture. Required.
+    :type monkeypatch: _pytest.monkeypatch.MonkeyPatch
+    :param live_config: Live Ollama config fixture. Required.
+    :type live_config: dict
+    :return: ``None``.
+    :rtype: None
+    """
+    monkeypatch.chdir(tmp_path)
+    code, content = _run_pipeline(tmp_path, "test-008--markdown-reflow.pdf", live_config)
+
+    assert code == 0
+    _assert_pages_in_order(content, 1)
+
+    # Entries must not be reflowed into a single running paragraph (issue #85).
+    assert "Foreword xi Preface" not in content, (
+        "Table-of-contents entries were reflowed into one paragraph"
+    )
+
+    expected_path = DATA / "test-008--markdown-reflow-expected.md"
+    expected = expected_path.read_text(encoding="utf-8")
+    ratio = difflib.SequenceMatcher(None, content.strip(), expected.strip()).ratio()
+    assert ratio >= 0.85, f"OCR output similarity to expected is only {ratio:.2%}"
