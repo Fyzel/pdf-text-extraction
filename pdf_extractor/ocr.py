@@ -41,6 +41,7 @@ Rules:
 - Write each paragraph as a SINGLE line. Do not insert line breaks inside a paragraph to mirror how the text wraps in the image.
 - Do NOT wrap text in emphasis markers (* or _) unless it is visually bold or italic. Regular body text must have no emphasis.
 - Use heading markup (#, ##, ###) only for actual headings, matching the visual hierarchy. Ordinary body sentences are never headings.
+- On a table-of-contents or index page, write each entry on its own line as plain text and keep the page number shown at the right edge of that entry on the same line (for example `Foreword xi`). Never use heading markup for contents entries, even when they look bold or indented, and never omit their page numbers.
 - diagrams: pixel bounding boxes for figures, charts, illustrations only. Empty array if none. Boxes must be tight — no surrounding whitespace, margins, or text. Do not pad or expand beyond the visible edge of the figure.
 - tables: render as markdown table syntax inside the text field. Do NOT add tables to diagrams.
 - Return ONLY the JSON object. No explanations, no code fences, no other text.\

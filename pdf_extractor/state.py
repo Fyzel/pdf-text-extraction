@@ -35,8 +35,11 @@ class PageState:
     :ivar diagram_count: Number of diagrams cropped from this page.
     :vartype diagram_count: int
     :ivar ocr_response: Raw ``response`` string returned by Ollama for this page,
-        stored verbatim (may include code fences). ``None`` when no Ollama call
-        was made (blank page) or the page failed all retries.
+        stored verbatim (may include code fences). Persisted for debugging the
+        model's output and as groundwork for resuming the post-OCR pipeline
+        (reflow/headings/etc.) without re-calling Ollama; no code consumes it
+        yet. ``None`` when no Ollama call was made (blank page) or the page
+        failed all retries.
     :vartype ocr_response: str | None
     """
 
