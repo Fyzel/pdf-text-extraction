@@ -259,3 +259,6 @@ ollama-dev.json
 # Generated test fixtures — created at test bootstrap by conftest.py, not committed
 tests/fixtures/*.pdf
 
+# Local debugging scratch — real-document pages, never commit
+tests/no-checkin/
+

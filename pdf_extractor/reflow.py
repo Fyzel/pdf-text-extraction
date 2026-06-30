@@ -26,9 +26,99 @@ _TABLE_RE = re.compile(r"^[ \t]*\|")
 _QUOTE_RE = re.compile(r"^[ \t]*>")
 _HR_RE = re.compile(r"^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 
+# A table-of-contents / index line: visible text followed by a trailing page
+# reference — an arabic page number or a lowercase front-matter roman numeral
+# (i…lxxxix). These are complete one-per-line entries, not soft-wrapped prose,
+# so reflow must not join them into a running paragraph (issue #85). The roman
+# form is deliberately narrow (no m/c/d, length ≥ 2) to avoid matching ordinary
+# words like "did" or "mix" or a sentence ending in the pronoun "I".
+_ROMAN_PAGE_RE = re.compile(r"^l?x{0,3}(?:ix|iv|v?i{0,3})$")
+_INDEX_TAIL_RE = re.compile(r"^[ \t]*\S.*\s(\S+?)[ \t]*$")
+# Leading dot leaders the model often glues to a page number ("...89", "…89").
+_LEADER_RE = re.compile(r"^[.…]+")
+
+# A run-on table of contents: the model sometimes transcribes a whole contents
+# page as one line, "Foreword xv Preface xvii Chapter 1 3 …". reflow only joins
+# lines, never splits, so such a line stays a single paragraph (issue #85). A
+# run is split back into one entry per line only when it cleanly partitions into
+# at least this many short entries that each end in a page reference — a guard
+# that keeps ordinary prose (which rarely tiles into number-terminated segments)
+# untouched.
+_MIN_RUN_ENTRIES: int = 3
+_MAX_ENTRY_WORDS: int = 14
+
 # A paragraph fully wrapped in a single run of 1–3 ``*`` or ``_`` with no
 # interior marker of the same kind — i.e. stray whole-paragraph emphasis.
 _WRAP_RE = re.compile(r"^(\*{1,3}|_{1,3})(\S.*?\S|\S)\1$")
+
+
+def _is_page_ref(token: str) -> bool:
+    """Return whether a token is a page reference (arabic or roman numeral).
+
+    Any leading dot leaders or ellipsis the model glues on (``...89``, ``…89``)
+    are stripped before the check.
+
+    :param token: A single whitespace-delimited token. Required.
+    :type token: str
+    :return: ``True`` for 1–4 arabic digits or a short lowercase roman numeral
+        (length ≥ 2, no hundreds/thousands), else ``False``.
+    :rtype: bool
+    """
+    core: str = _LEADER_RE.sub("", token)
+    if core.isdigit():
+        return len(core) <= 4
+    return len(core) >= 2 and bool(_ROMAN_PAGE_RE.match(core))
+
+
+def _is_index_entry(line: str) -> bool:
+    """Return whether a line is a table-of-contents / index entry.
+
+    An index entry is visible text followed by a trailing page reference — an
+    arabic page number or a short lowercase roman numeral (front matter). Such
+    lines are complete on their own and must not be reflowed into the next line.
+
+    :param line: A single line of page Markdown. Required.
+    :type line: str
+    :return: ``True`` if the line ends with a page-reference token.
+    :rtype: bool
+    """
+    match = _INDEX_TAIL_RE.match(line)
+    if match is None:
+        return False
+    return _is_page_ref(match.group(1))
+
+
+def _split_index_run(line: str) -> list[str]:
+    """Split a run-on table-of-contents line into one entry per line.
+
+    The model sometimes transcribes a whole contents page as a single line. Each
+    entry ends in a page reference, so the line is partitioned greedily: words
+    accumulate until a page-reference token closes an entry. The split is applied
+    only when the line tiles cleanly into at least :data:`_MIN_RUN_ENTRIES`
+    short entries with no leftover words — otherwise the line is returned
+    unchanged, so ordinary prose is never broken up.
+
+    :param line: A single line of page Markdown. Required.
+    :type line: str
+    :return: The entries as separate lines, or ``[line]`` if it is not a run.
+    :rtype: list[str]
+    """
+    words: list[str] = line.split()
+    entries: list[str] = []
+    current: list[str] = []
+    for word in words:
+        current.append(word)
+        if _is_page_ref(word):
+            entries.append(" ".join(current))
+            current = []
+    if current:
+        # Trailing words with no page reference — not a clean contents run.
+        return [line]
+    if len(entries) < _MIN_RUN_ENTRIES:
+        return [line]
+    if any(len(entry.split()) > _MAX_ENTRY_WORDS for entry in entries):
+        return [line]
+    return entries
 
 
 def _is_boundary(line: str) -> bool:
@@ -37,7 +127,8 @@ def _is_boundary(line: str) -> bool:
     :param line: A single line of page Markdown. Required.
     :type line: str
     :return: ``True`` for a blank line, heading, list item, table row,
-        blockquote, fence, or thematic break — anything that ends a paragraph.
+        blockquote, fence, thematic break, or table-of-contents entry — anything
+        that ends a paragraph.
     :rtype: bool
     """
     if not line.strip():
@@ -49,6 +140,7 @@ def _is_boundary(line: str) -> bool:
         or _QUOTE_RE.match(line)
         or FENCE_RE.match(line)
         or _HR_RE.match(line)
+        or _is_index_entry(line)
     )
 
 
@@ -86,6 +178,10 @@ def reflow_prose(text: str) -> str:
     as long and carries no info string, so a different or shorter marker inside
     the block does not close it early and re-enable reflow.
 
+    Table-of-contents and index entries (a line ending in a page reference) are
+    kept on their own line, and a whole contents page that the model collapsed
+    into one run-on line is split back into one entry per line.
+
     :param text: Per-page Markdown text from the OCR response. Required.
     :type text: str
     :return: Markdown with each prose paragraph on one line; structure
@@ -99,11 +195,16 @@ def reflow_prose(text: str) -> str:
     def _flush() -> None:
         """Emit the buffered paragraph (emphasis-stripped) and clear the buffer.
 
+        When the model split each contents entry's title and page number onto
+        their own lines, the buffer joins them into one run-on line; this is
+        split back into one entry per line before emitting.
+
         :return: ``None``.
         :rtype: None
         """
         if buf:
-            out.append(_strip_wrap_emphasis(" ".join(buf)))
+            joined: str = _strip_wrap_emphasis(" ".join(buf))
+            out.extend(_split_index_run(joined))
             buf.clear()
 
     for line in text.split("\n"):
@@ -115,6 +216,12 @@ def reflow_prose(text: str) -> str:
                 _flush()
             fence = new_fence
             out.append(line)
+            continue
+        pieces = _split_index_run(line)
+        if len(pieces) > 1:
+            # A run-on table of contents: emit each entry on its own line.
+            _flush()
+            out.extend(pieces)
             continue
         if _is_boundary(line):
             _flush()

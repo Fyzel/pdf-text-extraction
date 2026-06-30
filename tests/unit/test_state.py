@@ -64,6 +64,7 @@ def test_init_all_pages_blank(tmp_path):
         assert not pg.ocr_done
         assert not pg.ocr_failed
         assert pg.diagram_count == 0
+        assert pg.ocr_response is None
 
 
 def test_init_combined_done_false(tmp_path):
@@ -339,6 +340,36 @@ def test_update_page_diagram_count(tmp_path):
     sm, st = _make_sm(tmp_path)
     sm.update_page(st, 1, ocr_done=True, diagram_count=3)
     assert st.pages["1"].diagram_count == 3
+
+
+def test_update_page_ocr_response_persists(tmp_path):
+    """``update_page`` stores the raw Ollama response and reloads it.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
+    sm, st = _make_sm(tmp_path)
+    raw = '{"text": "hi", "diagrams": []}'
+    sm.update_page(st, 1, ocr_done=True, ocr_response=raw)
+    assert st.pages["1"].ocr_response == raw
+    st2 = StateManager(tmp_path).load_or_init(tmp_path / "fake.pdf", 3)
+    assert st2.pages["1"].ocr_response == raw
+
+
+def test_reset_pages_clears_ocr_response(tmp_path):
+    """Resetting a page clears its stored Ollama response.
+
+    :param tmp_path: pytest temporary-directory fixture. Required.
+    :type tmp_path: pathlib.Path
+    :return: ``None``.
+    :rtype: None
+    """
+    sm, st = _make_sm(tmp_path)
+    sm.update_page(st, 2, ocr_done=True, ocr_response='{"text": "x"}')
+    sm.reset_pages(st, [2])
+    assert st.pages["2"].ocr_response is None
 
 
 def test_update_page_persists(tmp_path):
