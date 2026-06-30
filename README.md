@@ -16,7 +16,7 @@ A command line tool that converts PDF files to Markdown using AI-powered OCR via
 - Table recognition — tables read directly from the PDF (PyMuPDF) and rendered as Markdown table syntax, not images
 - Markdown list normalisation — sub-bullets get valid CommonMark markers and indentation so nested lists render correctly
 - Heading-level correction — heading levels are derived from the PDF's font hierarchy, fixing the model's flattened or misranked headings (and demoting stray body sentences the model marked as headings); lines inside fenced code blocks are left verbatim so a `#` comment in code is never rewritten
-- Prose reflow — soft-wrapped paragraph lines are joined into one line and stray whole-paragraph emphasis is removed, matching clean Markdown; table-of-contents and index entries (lines ending in a page number) are kept one per line, not collapsed into a paragraph
+- Prose reflow — soft-wrapped paragraph lines are joined into one line and stray whole-paragraph emphasis is removed, matching clean Markdown; table-of-contents and index entries (lines ending in a page number) are kept one per line — and a contents page the model collapsed into a single run-on line is split back into one entry per line
 - Blank-page skipping — empty pages are detected and skipped, avoiding a wasted OCR call
 - PDF comments — optionally extract annotation text (sticky notes, highlight notes) into a per-page Comments section (`--include-comments`)
 - Hyperlinks — optionally rewrite plain text as Markdown links using the PDF's embedded URI hyperlinks (`--include-links`)

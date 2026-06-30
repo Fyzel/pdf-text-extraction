@@ -280,3 +280,78 @@ def test_single_letter_pronoun_does_not_block_reflow():
     assert reflow_prose("that is what I\nbelieve today") == (
         "that is what I believe today"
     )
+
+
+def test_runon_toc_split_into_entries():
+    """A whole contents page collapsed onto one line is split per entry.
+
+    The model sometimes transcribes a table of contents as a single run-on line;
+    each entry ends in a page reference, so it is split back one entry per line.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = "Foreword xv Preface xvii Introduction 1 Chapter One 3 Chapter Two 9"
+    expected = "Foreword xv\nPreface xvii\nIntroduction 1\nChapter One 3\nChapter Two 9"
+    assert reflow_prose(src) == expected
+
+
+def test_separate_title_and_number_lines_become_entries():
+    """Titles and page numbers on their own lines join then split per entry.
+
+    The model sometimes puts each contents title and its page number on separate
+    lines; reflow joins the run and splits it back into one entry per line.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = "Foreword\nxv\nPreface\nxvii\nIntroduction\n1\nChapter One\n3"
+    expected = "Foreword xv\nPreface xvii\nIntroduction 1\nChapter One 3"
+    assert reflow_prose(src) == expected
+
+
+def test_runon_with_dot_leader_page_numbers_split():
+    """Entries whose page number is glued to dot leaders are still split.
+
+    The model often emits ``...89`` (leader dots joined to the page number); the
+    leaders are ignored when recognising the page reference.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = "Intro ...5 Methods ...12 Results ...30 Discussion ...44"
+    expected = "Intro ...5\nMethods ...12\nResults ...30\nDiscussion ...44"
+    assert reflow_prose(src) == expected
+
+
+def test_runon_below_min_entries_not_split():
+    """A line with only two page-reference segments is left as prose.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = "we met in 2020 and parted in 2021"
+    assert reflow_prose(src) == src
+
+
+def test_runon_with_trailing_prose_not_split():
+    """A run that does not end in a page reference is not split.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = "Foreword xv Preface xvii Introduction 1 and then some closing remarks"
+    assert reflow_prose(src) == src
+
+
+def test_runon_long_entry_not_split():
+    """A segment far longer than a contents entry blocks the split.
+
+    :return: ``None``.
+    :rtype: None
+    """
+    src = (
+        "Foreword xv Preface xvii "
+        "this segment is far too long to be a real contents entry and runs on 4"
+    )
+    assert reflow_prose(src) == src
