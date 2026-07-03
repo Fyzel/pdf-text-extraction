@@ -4,7 +4,7 @@ cfgv==3.5.0
 colorama==0.4.6
 dill==0.4.1
 distlib==0.4.3
-filelock==3.29.4
+filelock==3.29.5
 identify==2.6.19
 iniconfig==2.3.0
 isort==8.0.1
