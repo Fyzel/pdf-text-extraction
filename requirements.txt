@@ -12,7 +12,7 @@ markdown-it-py==4.2.0
 mccabe==0.7.0
 mdurl==0.1.2
 nodeenv==1.10.0
-packaging==26.2
+packaging==26.3
 platformdirs==4.10.0
 pluggy==1.6.0
 pre_commit==4.6.1
