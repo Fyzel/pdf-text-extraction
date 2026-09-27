@@ -22,7 +22,7 @@ identify==2.6.19
     # via pre-commit
 iniconfig==2.3.0
     # via pytest
-isort==8.0.1
+isort==9.0.1
     # via pylint
 markdown-it-py==4.2.0
     # via rich
@@ -30,6 +30,8 @@ mccabe==0.7.0
     # via pylint
 mdurl==0.1.2
     # via markdown-it-py
+mypy-extensions==1.1.0
+    # via isort
 nodeenv==1.10.0
     # via pre-commit
 packaging==26.3
