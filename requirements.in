@@ -1,0 +1,10 @@
+# Direct dependencies only. requirements.txt is generated from this file:
+#   pip-compile requirements.in
+# Edit this file, then re-run pip-compile; do not hand-edit requirements.txt.
+bandit
+pre-commit
+pylint
+PyMuPDF
+pytest
+pytest-mock
+PyYAML
