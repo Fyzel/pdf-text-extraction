@@ -6,6 +6,11 @@ updates:
       interval: daily
     open-pull-requests-limit: 10
     target-branch: dev
+    groups:
+      pip-minor-patch:
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
@@ -13,3 +18,7 @@ updates:
       interval: daily
     open-pull-requests-limit: 10
     target-branch: dev
+    groups:
+      github-actions:
+        patterns:
+          - "*"
