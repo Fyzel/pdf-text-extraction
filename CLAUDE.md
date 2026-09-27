@@ -28,7 +28,7 @@ Test suite: `tests/` — unit, integration, and e2e layers. Run with `pytest tes
 
 Clean manual test-run output (generated `<stem>/` dirs and `<stem>.md` under `tests/data/`) with `bin/clean-test-data` — portable POSIX `sh` for Git Bash, Linux, and macOS.
 
-Application dependencies in `requirements.txt`: PyMuPDF, pytest, pytest-mock, pylint, bandit, pre-commit, PyYAML.
+Direct dependencies in `requirements.in`: PyMuPDF, pytest, pytest-mock, pylint, bandit, pre-commit, PyYAML. `requirements.txt` is the pip-tools lock file generated from it (`pip-compile --strip-extras requirements.in`); never hand-edit it. Dependabot re-runs pip-compile, so indirect-dependency bumps stay within the constraints of their parent packages.
 
 ## Pre-commit Hooks
 

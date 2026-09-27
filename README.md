@@ -60,6 +60,16 @@ Install pre-commit hooks:
 pre-commit install
 ```
 
+### Changing dependencies
+
+`requirements.in` lists the direct dependencies. `requirements.txt` is the pinned lock file generated from it by [pip-tools](https://github.com/jazzband/pip-tools) — don't edit it by hand. To add, remove, or upgrade a package, edit `requirements.in` and regenerate:
+
+```sh
+pip install pip-tools
+pip-compile --strip-extras requirements.in                          # re-lock, keeping existing pins
+pip-compile --strip-extras --upgrade-package pylint requirements.in # upgrade one package
+```
+
 ## Configuration
 
 Copy the sample config and edit it to point at your Ollama instance:
